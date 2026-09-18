@@ -1,0 +1,29 @@
+# Environment
+.env
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Vector store / data (regenerate via ingestion, don't commit).
+# Keep the folder structure itself via .gitkeep placeholders.
+database/**
+!database/**/
+!**/.gitkeep
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

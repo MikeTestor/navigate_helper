@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Sample page</title>
+    <style>
+        body { font-family: sans-serif; }
+    </style>
+    <script>
+        console.log("this should be stripped out");
+    </script>
+</head>
+<body>
+    <header>
+        <h1>Ragger Demo Site</h1>
+    </header>
+    <nav>
+        <ul>
+            <li><a href="/">Home</a></li>
+            <li><a href="/about">About</a></li>
+        </ul>
+    </nav>
+    <main>
+        <h2>About this sample</h2>
+        <p>
+            This is a placeholder .htm document so the ingestion pipeline has
+            something real to clean and chunk out of the box.
+        </p>
+        <p>
+            The <code>html_to_text</code> cleaner in
+            <code>src/file_preparing/html_cleaning.py</code> should strip the
+            script, style, header, nav, and footer tags above and below, and
+            keep only this paragraph and the heading.
+        </p>
+    </main>
+    <footer>
+        <p>&copy; 2026 Ragger Demo. All rights reserved.</p>
+    </footer>
+</body>
+</html>
