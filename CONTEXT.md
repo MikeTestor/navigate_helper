@@ -28,6 +28,10 @@ _Avoid_: Docs, knowledge base, wiki
 One `.htm` file of the Manual, covering a single topic.
 _Avoid_: Document, file, topic
 
+**Kennispagina**:
+A curated single-page wrapper around the Manual on the shared drive, covering about 20 topics with text taken from Manual Pages and rebranded from "Credit Navigator" to "Aryza Navigate". It is not a source for Answers.
+_Avoid_: Online helpdesk, online manual
+
 **Cleaned Page**:
 The Markdown version of one Manual Page, keeping its headings, lists, tables, Screenshots and Page Links, with RoboHelp boilerplate removed.
 _Avoid_: Processed file, clean text
