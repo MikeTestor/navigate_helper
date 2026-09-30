@@ -11,11 +11,14 @@ Two layout variants, switched with the radio at the top:
 
 import html
 import re
+import tempfile
 from pathlib import Path
 
 import gradio as gr
 
-DATA = Path(r"C:\Aryza_navigate_Kennispagina\Data")  # raw Manual pages + images
+RAW = Path(__file__).resolve().parents[2] / "database" / "knowledge-base" / "raw"  # what the embedding is based on
+PAGES = RAW / "htm_docs"
+VIEW = Path(tempfile.mkdtemp(prefix="prototype_view_"))  # rewritten raw pages, for the full-page link
 
 # ---- fake Answer -------------------------------------------------------------
 FAKE = {
@@ -35,12 +38,32 @@ def title_of(name: str) -> str:
     return name.removesuffix(".htm").replace("_", " ")
 
 
+def image_path(src: str) -> Path:
+    """Resolve the three <img src> forms: bare filename, images/..., <Page>_files/... (relative to raw/)."""
+    if src.startswith("images/"):
+        return RAW / src
+    if "_files/" in src:
+        return PAGES / src
+    return RAW / "images" / src
+
+
+def rewritten_page(name: str) -> str:
+    """Raw page with scripts stripped and image src pointing at Gradio file URLs."""
+    raw = (PAGES / name).read_text(encoding="utf-8-sig", errors="ignore")
+    raw = re.sub(r"<script.*?</script>", "", raw, flags=re.S | re.I)
+    return re.sub(
+        r'(<img[^>]+src=")([^"]+)"',
+        lambda m: f'{m.group(1)}/gradio_api/file={image_path(m.group(2)).as_posix()}"',
+        raw,
+    )
+
+
 def screenshots(pages: list[str]) -> list[tuple[str, str]]:
     out, seen = [], set()
     for p in pages[:2]:
-        raw = (DATA / p).read_text(encoding="utf-8-sig", errors="ignore")
+        raw = (PAGES / p).read_text(encoding="utf-8-sig", errors="ignore")
         for src in re.findall(r'<img[^>]+src="([^"]+)"', raw):
-            f = DATA / src
+            f = image_path(src)
             if f.exists() and src not in seen and len(out) < 6:
                 seen.add(src)
                 out.append((str(f), f"{title_of(p)} / {src}"))
@@ -48,16 +71,9 @@ def screenshots(pages: list[str]) -> list[tuple[str, str]]:
 
 
 def raw_iframe(name: str, height: int = 520) -> str:
-    """Raw page: strip scripts, images -> Gradio file URLs, srcdoc iframe, sandbox allow-same-origin."""
-    raw = (DATA / name).read_text(encoding="utf-8-sig", errors="ignore")
-    raw = re.sub(r"<script.*?</script>", "", raw, flags=re.S | re.I)
-    raw = re.sub(
-        r'(<img[^>]+src=")([^"]+)"',
-        lambda m: f'{m.group(1)}/gradio_api/file={(DATA / m.group(2)).as_posix()}"',
-        raw,
-    )
+    """Raw page in a srcdoc iframe, sandbox allow-same-origin (no scripts) so the images load."""
     return (
-        f'<iframe sandbox="allow-same-origin" srcdoc="{html.escape(raw)}" '
+        f'<iframe sandbox="allow-same-origin" srcdoc="{html.escape(rewritten_page(name))}" '
         f'style="width:100%;height:{height}px;border:1px solid #ccc"></iframe>'
     )
 
@@ -71,8 +87,10 @@ def cleaned_stub(name: str) -> str:
 def open_link(name: str | None):
     if not name:
         return gr.update(), gr.update(), gr.update()
-    full = f"[open full page](/gradio_api/file={(DATA / name).as_posix()})"
-    return raw_iframe(name), cleaned_stub(name), f"**{title_of(name)}** · {full} · shared-drive path: `{DATA / name}`"
+    out = VIEW / name
+    out.write_text(rewritten_page(name), encoding="utf-8")
+    full = f"[open full page](/gradio_api/file={out.as_posix()})"
+    return raw_iframe(name), cleaned_stub(name), f"**{title_of(name)}** · {full}"
 
 
 def ask(message: str, history: list[dict]):
@@ -139,4 +157,4 @@ with gr.Blocks(title="PROTOTYPE dev app") as demo:
     links_b.input(open_link, links_b, [raw_b, clean_b, info_b])
 
 if __name__ == "__main__":
-    demo.launch(allowed_paths=[str(DATA)])
+    demo.launch(allowed_paths=[str(RAW), str(VIEW)])
