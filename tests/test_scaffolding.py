@@ -38,8 +38,8 @@ def test_only_ask_and_ui_need_the_api_key(monkeypatch, capsys):
     monkeypatch.setattr(cli, "load_config", lambda: load_config({}))
     with pytest.raises(MissingConfigError):
         load_config({}).require_api_key()
-    # chunk reaches the stub, not the key check
-    assert cli.main(["chunk"]) == 1
+    # embed reaches the stub, not the key check
+    assert cli.main(["embed"]) == 1
     assert "not implemented" in capsys.readouterr().err
     for argv in (["ask", "vraag"], ["ui"]):
         assert cli.main(argv) == 1
