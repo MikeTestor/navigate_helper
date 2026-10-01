@@ -1,49 +1,30 @@
 [project]
-name = "ragger"
+name = "navigate-helper"
 version = "0.1.0"
-description = "RAG project template"
+description = "Dutch question answering over the Aryza Navigate Manual (RAG)"
 requires-python = ">=3.11"
 dependencies = [
-    "anthropic>=1.6.0",
     "beautifulsoup4>=4.15.0",
     "chromadb>=1.5.9",
-    "datasets==3.6.0",
-    "feedparser>=6.0.14",
-    "google-generativeai>=0.8.6",
     "gradio>=6.27.0",
-    "ipykernel>=7.3.0",
-    "ipywidgets>=8.1.9",
-    "jupyter-dash>=0.4.2",
-    "jupyterlab>=4.6.3",
-    "langchain>=1.4.1",
     "langchain-chroma>=1.1.0",
-    "langchain-community>=0.4.2",
     "langchain-core>=1.6.3",
     "langchain-huggingface>=1.2.2",
     "langchain-openai>=1.6.2",
-    "langchain-text-splitters>=1.1.2",
-    "matplotlib>=3.11.2",
-    "modal>=1.5.5",
-    "nbstripout>=0.9.1",
-    "numpy>=2.4.6",
-    "ollama>=0.6.2",
-    "openai>=3.14.1",
-    "pandas>=3.0.5",
-    "plotly>=7.1.0",
-    "protobuf==3.20.2",
-    "psutil>=7.2.2",
-    "pydub>=0.25.1",
+    "markdownify>=1.2.0",
     "python-dotenv>=1.2.3",
-    "requests>=2.34.2",
-    "scikit-learn>=1.9.1",
-    "scipy>=1.17.1",
     "sentence-transformers>=6.0.1",
-    "setuptools>=84.0.0",
-    "speedtest-cli>=2.1.3",
     "torch>=2.14.0",
     "tqdm>=4.70.1",
     "transformers>=5.17.0",
-    "wandb>=0.25.0",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.3.0",
+    "jupyterlab>=4.6.3",
+    "nbstripout>=0.9.1",
+    "pytest>=8.0",
 ]
 
 [build-system]
@@ -52,3 +33,8 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = ["slow: uses the real e5 model (downloads about 1 GB on first run)"]
