@@ -44,6 +44,10 @@ _Avoid_: Image, picture
 A reference from one Manual Page to another Manual Page.
 _Avoid_: Hyperlink, URL
 
+**Section**:
+A part of a Manual Page that starts at a heading and runs to the next heading of the same or a higher level. Chunks are cut from Sections.
+_Avoid_: Paragraph, block
+
 **Chunk**:
 A contiguous piece of a Manual Page, remembering which Manual Page, Screenshots and Page Links it came from.
 _Avoid_: Snippet, passage, fragment
