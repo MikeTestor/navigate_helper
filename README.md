@@ -4,7 +4,7 @@ An assistant that answers Dutch questions about Aryza Navigate, grounded in its 
 
 ## Status
 
-Walking skeleton under construction. The package, CLI, configuration and test tooling are in place; the stages (`clean`, `chunk`, `embed`, `ask`, `ui`) are stubs that fail with "not implemented" until their build issues land.
+Walking skeleton under construction. The package, CLI, configuration, test tooling and the `clean` stage are in place; the other stages (`chunk`, `embed`, `ask`, `ui`) are stubs that fail with "not implemented" until their build issues land.
 
 ## Where to look
 
@@ -36,6 +36,8 @@ uv run python -m navigate_helper ui               # Gradio dev app
 ```
 
 `clean` and `chunk` take `--page <stem>` (the Manual Page filename without `.htm`) to process one page. Each stage rebuilds its output from scratch. `all` does not start the UI.
+
+`clean` prints a summary and writes `cleaned/_clean_report.json` (pages cleaned, dropped Page Links and images, and the short or link-only pages it flagged, with the reason).
 
 ## Configuration
 
