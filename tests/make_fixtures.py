@@ -7,7 +7,7 @@ d = pathlib.Path(__file__).parent / "fixtures" / "pages"
 (d / "with_files_files").mkdir(parents=True, exist_ok=True)
 head = (
     '<html><head><title>{t}</title>\r\n<script src="whver.js"></script></head>\r\n<body>\r\n'
-    '<script>RH_Document_Write("<p>menu</p>");RH_AddMasterBreadcrumbs("index.htm","","Home","");</script>\r\n'
+    '<script>RH_Document_Write("<p style=\\"text-align:right\\"> ");RH_AddMasterBreadcrumbs("index.htm","","Home","");</script>\r\n'
 )
 
 

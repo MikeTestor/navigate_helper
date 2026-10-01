@@ -4,7 +4,7 @@ import argparse
 import sys
 
 from navigate_helper import ask, chunk, clean, embed, ui
-from navigate_helper.config import MissingConfigError, load_config
+from navigate_helper.config import MissingConfigError, StageError, load_config
 
 STAGES = {"clean": clean, "chunk": chunk, "embed": embed}
 PIPELINE = ("clean", "chunk", "embed")
@@ -40,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "ui":
             config.require_api_key()
             ui.run(config)
-    except (MissingConfigError, NotImplementedError) as error:
+    except (MissingConfigError, NotImplementedError, StageError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     return 0

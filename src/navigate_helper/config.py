@@ -24,6 +24,10 @@ class MissingConfigError(RuntimeError):
     """A required configuration value is not set."""
 
 
+class StageError(RuntimeError):
+    """A pipeline stage cannot run or finished with failures."""
+
+
 @dataclass(frozen=True)
 class Config:
     openai_api_key: str | None
