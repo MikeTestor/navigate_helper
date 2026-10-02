@@ -45,6 +45,15 @@ FOCUS_QUESTION_JS = (
     " window.addEventListener('focus', focus); }"
 )
 
+CHAT_ID = "chat"
+# Gradio puts a message's copy button below the message; this puts it to the right of the text, top-aligned.
+# (20px is the message row's own top margin.)
+CHAT_CSS = f"""
+#{CHAT_ID} .message-wrap {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 4px; }}
+#{CHAT_ID} .message-wrap > .message-row {{ grid-column: 1; }}
+#{CHAT_ID} .message-wrap > .message-buttons {{ grid-column: 2; align-self: start; margin: 20px 0 0 0; width: auto; }}
+"""
+
 DEBUG_HEADERS = ["chunk_id", "page title", "heading path", "score", "cited", "text"]
 
 
@@ -114,7 +123,7 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
     with gr.Blocks(title="Navigate Helper") as blocks:
         with gr.Row():
             with gr.Column(scale=2):
-                chat = gr.Chatbot(height=420)
+                chat = gr.Chatbot(height=420, elem_id=CHAT_ID)
                 links = gr.Radio(label="Page Links (kies om te openen)", visible=False)
                 gallery = gr.Gallery(label="Screenshots", columns=3, height=200)
                 box = gr.Textbox(placeholder="Stel een vraag", show_label=False, elem_id=QUESTION_ID, autofocus=True)
@@ -137,7 +146,7 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
 def run(config: Config) -> None:
     assistant = build_assistant(config)  # once, at startup (slow: loads the e5 model)
     chat_blocks(assistant, config).launch(
-        allowed_paths=[str(config.raw_dir.resolve()), str(view_dir())], js=FOCUS_QUESTION_JS
+        allowed_paths=[str(config.raw_dir.resolve()), str(view_dir())], js=FOCUS_QUESTION_JS, css=CHAT_CSS
     )
 
 
