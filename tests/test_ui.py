@@ -147,9 +147,9 @@ def test_later_answers_do_not_preselect_a_page(config):
 
 def test_clearing_the_radio_leaves_the_viewer_unchanged():
     shown = []
-    wrapped = ui.keep_viewer_when_unselected(lambda page: shown.append(page) or ("h", "r", "c"))
-    assert wrapped("Budgetten.htm") == ("h", "r", "c")
-    assert len(wrapped(None)) == 3 and shown == ["Budgetten.htm"]
+    wrapped = ui.keep_viewer_when_unselected(lambda page: shown.append(page) or ("h", "r", "c", "s"))
+    assert wrapped("Budgetten.htm") == ("h", "r", "c", "s")
+    assert len(wrapped(None)) == ui.VIEWER_OUTPUT_COUNT and shown == ["Budgetten.htm"]
 
 
 def test_respond_preselects_the_first_page_so_the_viewer_loads(config):
@@ -184,6 +184,13 @@ def test_chat_scrolls_to_the_latest_question_after_an_answer(config):
     chat = next(b for b in blocks.blocks.values() if isinstance(b, gr.Chatbot))
     assert chat.autoscroll is False  # Gradio's own scroll-to-bottom would fight the script
     assert any(fn.js == ui.SCROLL_TO_QUESTION_JS for fn in blocks.fns.values())
+
+
+def test_markdown_tab_has_a_copy_button_that_copies_the_source(config):
+    blocks = ui.chat_blocks(FakeAssistant(make_answer()), config)
+    assert any(isinstance(b, gr.Button) and b.value == "Kopieer markdown" for b in blocks.blocks.values())
+    assert any(fn.js == ui.COPY_MARKDOWN_JS for fn in blocks.fns.values())
+    assert "clipboard.writeText" in ui.COPY_MARKDOWN_JS
 
 
 def test_question_box_is_focused_on_open(config):

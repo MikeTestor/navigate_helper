@@ -10,8 +10,18 @@ from navigate_helper.config import Config, load_config
 from navigate_helper.page_view import page_viewer, resolve_image, view_dir
 
 
+VIEWER_OUTPUT_COUNT = 4  # heading, raw page, Cleaned Page, Markdown source
+# Copies the Markdown source and shows "Gekopieerd" on the clicked button for a moment.
+COPY_MARKDOWN_JS = (
+    "async (md) => { await navigator.clipboard.writeText(md || '');"
+    " const button = document.activeElement;"
+    " if (button) { const label = button.textContent; button.textContent = 'Gekopieerd ✓';"
+    " setTimeout(() => { button.textContent = label; }, 1500); } }"
+)
+
+
 def build_page_viewer(config: Config | None = None):
-    """The Page viewer components, to be called inside a `gr.Blocks`; returns `((heading, raw, cleaned), show, tabs)`.
+    """The Page viewer components, to be called inside a `gr.Blocks`; returns `((heading, raw, cleaned, source), show, tabs)`.
 
     `show(page_file)` loads the viewer; the chat app calls it when a Page Link is chosen. The heading sits above
     `tabs` (Manual page, Markdown page); the caller can re-enter `tabs` to add its own tab.
@@ -21,13 +31,16 @@ def build_page_viewer(config: Config | None = None):
         with gr.Tab("Manual page"):
             raw = gr.HTML()
         with gr.Tab("Markdown page"):
+            source = gr.Textbox(visible=False)  # the .md file itself, which is what the button copies (State is invisible to js)
+            copy = gr.Button("Kopieer markdown", size="sm")
             cleaned = gr.Markdown()
+    copy.click(None, source, None, js=COPY_MARKDOWN_JS)
 
     def show(page_file: str | None):
         view = page_viewer(page_file, config)
-        return view.heading, view.raw_html, view.cleaned_markdown
+        return view.heading, view.raw_html, view.cleaned_markdown, view.markdown_source
 
-    return (heading, raw, cleaned), show, tabs
+    return (heading, raw, cleaned, source), show, tabs
 
 
 def page_viewer_blocks(config: Config | None = None) -> gr.Blocks:
@@ -180,7 +193,7 @@ def keep_viewer_when_unselected(show):
     """Wrap the Page viewer's `show` so that clearing the radio (a new Answer) leaves the viewer as it is."""
 
     def wrapped(page_file: str | None):
-        return show(page_file) if page_file else (gr.update(), gr.update(), gr.update())
+        return show(page_file) if page_file else tuple(gr.update() for _ in range(VIEWER_OUTPUT_COUNT))
 
     return wrapped
 

@@ -29,11 +29,15 @@ _view_dir: Path | None = None
 
 @dataclass(frozen=True)
 class PageView:
-    """What the Page viewer shows: an HTML heading, the raw page iframe, and the Cleaned Page as Markdown."""
+    """What the Page viewer shows: an HTML heading, the raw page iframe, and the Cleaned Page as Markdown.
+
+    `markdown_source` is the Cleaned Page file as written by `clean` (for copying); empty when there is none.
+    """
 
     heading: str
     raw_html: str
     cleaned_markdown: str
+    markdown_source: str = ""
 
 
 def file_url(path: Path) -> str:
@@ -142,8 +146,10 @@ def page_viewer(page_file: str | None, config: Config | None = None) -> PageView
     heading = f"<h3>{html.escape(title)} · {link}</h3>"
 
     cleaned_path = config.cleaned_dir / f"{stem}.md"
+    source = ""
     if cleaned_path.is_file():
-        cleaned = rewrite_cleaned(cleaned_path.read_text(encoding="utf-8"), raw_dir)
+        source = cleaned_path.read_text(encoding="utf-8")
+        cleaned = rewrite_cleaned(source, raw_dir)
     else:
         cleaned = "*Geen Cleaned Page beschikbaar voor deze pagina (draai eerst `clean`).*"
-    return PageView(heading, raw_iframe(rewritten), cleaned)
+    return PageView(heading, raw_iframe(rewritten), cleaned, source)
