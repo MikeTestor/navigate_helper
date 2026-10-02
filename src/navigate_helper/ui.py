@@ -42,14 +42,24 @@ def page_viewer_blocks(config: Config | None = None) -> gr.Blocks:
 
 
 QUESTION_ID = "question"
+CHAT_ID = "chat"
 # Autofocus covers opening the app; this refocuses the question box when the browser tab is selected again.
 FOCUS_QUESTION_JS = (
     "() => { const focus = () => document.querySelector('#" + QUESTION_ID + " textarea')?.focus();"
     " window.addEventListener('focus', focus); }"
 )
 
-CHAT_ID = "chat"
 LEFT_ID = "left"
+# After an Answer the chat scrolls down, but stops when the latest question reaches the top of the chat
+# (the browser clamps scrollTop, so a short Answer simply ends up at the bottom).
+SCROLL_TO_QUESTION_JS = (
+    "() => { setTimeout(() => {"
+    " const chat = document.querySelector('#" + CHAT_ID + " .bubble-wrap');"
+    " const rows = chat ? chat.querySelectorAll('.message-row.user-row') : [];"
+    " const last = rows[rows.length - 1];"
+    " if (last) chat.scrollTop += last.getBoundingClientRect().top - chat.getBoundingClientRect().top - 8;"
+    " }, 50); }"
+)
 # Gradio puts a message's copy button below the message; this puts it to the right of the text, top-aligned.
 # (20px is the message row's own top margin.)
 CHAT_CSS = f"""
@@ -176,7 +186,7 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
     with gr.Blocks(title="Navigate Helper") as blocks:
         with gr.Row():
             with gr.Column(scale=2, elem_id=LEFT_ID):
-                chat = gr.Chatbot(elem_id=CHAT_ID)
+                chat = gr.Chatbot(elem_id=CHAT_ID, autoscroll=False)
                 links = gr.Radio(label="Page Links (kies om te openen)", visible=False)
                 clear_links = gr.Button("Wis lijst", size="sm")
                 box = gr.Textbox(placeholder="Stel een vraag", show_label=False, elem_id=QUESTION_ID, autofocus=True)
@@ -193,7 +203,7 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
             lambda message, history, shown: respond(assistant, config, message, history, shown),
             [box, chat, shown],
             [chat, box, links, gallery, large, table, notes, shown],
-        )
+        ).then(None, None, None, js=SCROLL_TO_QUESTION_JS)
         gallery.select(select_screenshot, None, large)
         clear_links.click(clear_page_links, None, [links, shown])
         links.change(keep_viewer_when_unselected(show), links, list(viewer_outputs))

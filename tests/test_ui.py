@@ -174,6 +174,13 @@ def test_chat_blocks_build_with_a_fake_assistant(config):
     assert len({b.parent for b in blocks.blocks.values() if isinstance(b, gr.Tab)}) == 1  # one row of tabs
 
 
+def test_chat_scrolls_to_the_latest_question_after_an_answer(config):
+    blocks = ui.chat_blocks(FakeAssistant(make_answer()), config)
+    chat = next(b for b in blocks.blocks.values() if isinstance(b, gr.Chatbot))
+    assert chat.autoscroll is False  # Gradio's own scroll-to-bottom would fight the script
+    assert any(fn.js == ui.SCROLL_TO_QUESTION_JS for fn in blocks.fns.values())
+
+
 def test_question_box_is_focused_on_open(config):
     blocks = ui.chat_blocks(FakeAssistant(make_answer()), config)
     box = next(b for b in blocks.blocks.values() if getattr(b, "elem_id", None) == ui.QUESTION_ID)
