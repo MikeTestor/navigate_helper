@@ -17,7 +17,8 @@ from navigate_helper.clean import collapse
 from navigate_helper.config import Config, load_config
 
 FILE_URL_PREFIX = "/gradio_api/file="
-IFRAME_HEIGHT = 560
+IFRAME_HEIGHT = "calc(100vh - 216px)"  # bottom edge level with the question box: 100px for the left column, 116px for the heading and tabs above the page
+IFRAME_MIN_HEIGHT = "300px"
 
 _EXTERNAL = re.compile(r"^(https?:|mailto:|data:|//)", re.IGNORECASE)
 _FRONT_MATTER = re.compile(r"\A---\n.*?\n---\n\n?", re.DOTALL)
@@ -28,11 +29,15 @@ _view_dir: Path | None = None
 
 @dataclass(frozen=True)
 class PageView:
-    """What the Page viewer shows: an HTML heading, the raw page iframe, and the Cleaned Page as Markdown."""
+    """What the Page viewer shows: an HTML heading, the raw page iframe, and the Cleaned Page as Markdown.
+
+    `markdown_source` is the Cleaned Page file as written by `clean` (for copying); empty when there is none.
+    """
 
     heading: str
     raw_html: str
     cleaned_markdown: str
+    markdown_source: str = ""
 
 
 def file_url(path: Path) -> str:
@@ -87,10 +92,10 @@ def rewrite_cleaned(markdown: str, raw_dir: Path) -> str:
     return _MD_PAGE_LINK.sub(lambda m: m.group(1), _MD_IMAGE.sub(image, markdown))
 
 
-def raw_iframe(rewritten: str, height: int = IFRAME_HEIGHT) -> str:
+def raw_iframe(rewritten: str, height: str = IFRAME_HEIGHT) -> str:
     return (
         f'<iframe sandbox="allow-same-origin" srcdoc="{html.escape(rewritten)}" '
-        f'style="width:100%;height:{height}px;border:1px solid #ccc"></iframe>'
+        f'style="width:100%;height:{height};min-height:{IFRAME_MIN_HEIGHT};border:1px solid #ccc"></iframe>'
     )
 
 
@@ -141,8 +146,10 @@ def page_viewer(page_file: str | None, config: Config | None = None) -> PageView
     heading = f"<h3>{html.escape(title)} · {link}</h3>"
 
     cleaned_path = config.cleaned_dir / f"{stem}.md"
+    source = ""
     if cleaned_path.is_file():
-        cleaned = rewrite_cleaned(cleaned_path.read_text(encoding="utf-8"), raw_dir)
+        source = cleaned_path.read_text(encoding="utf-8")
+        cleaned = rewrite_cleaned(source, raw_dir)
     else:
         cleaned = "*Geen Cleaned Page beschikbaar voor deze pagina (draai eerst `clean`).*"
-    return PageView(heading, raw_iframe(rewritten), cleaned)
+    return PageView(heading, raw_iframe(rewritten), cleaned, source)

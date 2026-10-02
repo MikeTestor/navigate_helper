@@ -32,6 +32,11 @@ def iframe_doc(view):
     return unescape(view.raw_html[start : view.raw_html.index('" style=', start)])
 
 
+def test_iframe_fills_the_window_height(config):
+    view = page_viewer("with_files.htm", config)
+    assert "height:calc(100vh - 216px)" in view.raw_html and "min-height:300px" in view.raw_html
+
+
 def test_iframe_is_sandboxed_without_scripts(config):
     view = page_viewer("with_files.htm", config)
     assert 'sandbox="allow-same-origin"' in view.raw_html and "allow-scripts" not in view.raw_html
@@ -106,6 +111,18 @@ def test_missing_page_shows_a_message(config):
     for name in ("bestaat_niet.htm", "../secret.htm", "", None, "tables.txt"):
         view = page_viewer(name, config)
         assert view.raw_html == "" and view.cleaned_markdown == "" and "<em>" in view.heading
+
+
+def test_markdown_source_is_the_cleaned_file_as_written(config):
+    view = page_viewer("tables.htm", config)
+    assert view.markdown_source == (config.cleaned_dir / "tables.md").read_text(encoding="utf-8")
+    assert "(<no_sections.htm>)" in view.markdown_source  # the Page Link is kept: the file, not the rendered text
+    assert "(<no_sections.htm>)" not in view.cleaned_markdown
+
+
+def test_markdown_source_is_empty_without_a_cleaned_page(config):
+    (config.cleaned_dir / "tables.md").unlink()
+    assert page_viewer("tables.htm", config).markdown_source == ""
 
 
 def test_missing_cleaned_page_shows_a_message_beside_the_raw_page(config):
