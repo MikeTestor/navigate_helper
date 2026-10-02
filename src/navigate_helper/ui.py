@@ -56,6 +56,8 @@ def page_viewer_blocks(config: Config | None = None) -> gr.Blocks:
 
 QUESTION_ID = "question"
 CHAT_ID = "chat"
+TABS_ID = "chat-tabs"
+FOCUS_NOW_JS = "() => document.querySelector('#" + QUESTION_ID + " textarea')?.focus()"
 # Autofocus covers opening the app; this refocuses the question box when the browser tab is selected again.
 FOCUS_QUESTION_JS = (
     "() => { const focus = () => document.querySelector('#" + QUESTION_ID + " textarea')?.focus();"
@@ -82,6 +84,12 @@ CHAT_CSS = f"""
 #{CHAT_ID} .message-wrap {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 4px; }}
 #{CHAT_ID} .message-wrap > .message-row {{ grid-column: 1; }}
 #{CHAT_ID} .message-wrap > .message-buttons {{ grid-column: 2; align-self: start; justify-self: start; margin: 20px 0 0 0; width: auto; }}
+#{TABS_ID} {{ align-items: center; gap: 4px; flex-wrap: nowrap; }}
+#{TABS_ID} > fieldset {{ flex: 0 1 auto !important; width: auto !important; min-width: 0 !important; }}
+#{TABS_ID} fieldset .wrap {{ flex-wrap: nowrap; overflow-x: auto; }}
+#{TABS_ID} input[type=radio] {{ display: none; }}  /* the Radio is shown as a row of tabs */
+#{TABS_ID} label {{ border-radius: 6px 6px 0 0; }}
+#{TABS_ID} label.selected {{ border-bottom: 2px solid var(--color-accent); font-weight: 600; }}
 #{CHAT_ID} .message-buttons .icon-button-wrapper {{ margin: 0; }}  /* same size for user and assistant messages */
 """
 
@@ -185,8 +193,66 @@ def select_screenshot(event: gr.SelectData):
     return large_screenshot((item["image"]["path"], item.get("caption") or ""))
 
 
-def clear_page_links():
-    return gr.update(choices=[], value=None, visible=False), []
+@dataclass
+class Conversation:
+    """One chat tab: everything the left column and the Debug and Screenshots tabs show for it."""
+
+    title: str = ""  # the first question; empty until there is one
+    history: list = field(default_factory=list)
+    shown: list = field(default_factory=list)  # accumulated Page Links, as (title, page_file)
+    gallery: list = field(default_factory=list)
+    large: object = field(default_factory=lambda: large_screenshot(None))
+    rows: list = field(default_factory=list)
+    notes: str = ""
+
+
+TAB_TITLE_CHARS = 24
+
+
+def chat_tabs(chats: list[Conversation], active: int):
+    """The tab strip: one entry per conversation, named after its first question."""
+    labels = []
+    for number, chat in enumerate(chats, start=1):
+        title = chat.title.strip()
+        if len(title) > TAB_TITLE_CHARS:
+            title = title[: TAB_TITLE_CHARS - 1].rstrip() + "…"
+        labels.append((title or f"Chat {number}", number - 1))
+    return gr.update(choices=labels, value=active)
+
+
+def chat_view(chat: Conversation):
+    """What to put in (chat, Page Links, gallery, large screenshot, Debug table, Debug notes) for a conversation."""
+    links = gr.update(choices=chat.shown, value=None, visible=bool(chat.shown))
+    return chat.history, links, chat.gallery, chat.large, chat.rows, chat.notes
+
+
+def new_chat(chats: list[Conversation]):
+    """The + button: add an empty conversation and switch to it."""
+    chats = list(chats) + [Conversation()]
+    active = len(chats) - 1
+    return (chats, chat_tabs(chats, active), *chat_view(chats[active]))
+
+
+def switch_chat(chats: list[Conversation], active: int):
+    return chat_view(chats[active])
+
+
+def submit(assistant, config: Config, message: str, chats: list[Conversation], active: int):
+    """One turn in the active conversation: the `respond` outputs plus the updated conversations and tab strip."""
+    chat = chats[active]
+    history, box, links, gallery, large, rows, notes, shown = respond(
+        assistant, config, message, chat.history, chat.shown
+    )
+    if message.strip():
+        chat.history, chat.shown = history, shown
+        chat.gallery, chat.large, chat.rows, chat.notes = gallery, large, rows, notes
+        chat.title = chat.title or message.strip()
+    return history, box, links, gallery, large, rows, notes, chats, chat_tabs(chats, active)
+
+
+def clear_page_links(chats: list[Conversation], active: int):
+    chats[active].shown = []
+    return gr.update(choices=[], value=None, visible=False), chats
 
 
 def keep_viewer_when_unselected(show):
@@ -203,6 +269,11 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
     with gr.Blocks(title="Navigate Helper") as blocks:
         with gr.Row():
             with gr.Column(scale=2, elem_id=LEFT_ID):
+                with gr.Row(elem_id=TABS_ID):
+                    tab_strip = gr.Radio(
+                        choices=[("Chat 1", 0)], value=0, show_label=False, container=False, scale=0, min_width=0,
+                    )
+                    plus = gr.Button("+", size="sm", scale=0, min_width=44)
                 chat = gr.Chatbot(elem_id=CHAT_ID, autoscroll=False)
                 links = gr.Radio(label="Page Links (kies om te openen)", visible=False)
                 clear_links = gr.Button("Wis lijst", size="sm")
@@ -218,14 +289,17 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
                 with tabs, gr.Tab("Screenshots"):
                     gallery = gr.Gallery(label="Alle screenshots", columns=4, height=220, allow_preview=False)
                     large = gr.Image(label="Screenshot", interactive=False)
-        shown = gr.State([])  # the accumulated Page Links, as (title, page_file)
+        chats = gr.State([Conversation()])
+        view = [chat, links, gallery, large, table, notes]
         box.submit(
-            lambda message, history, shown: respond(assistant, config, message, history, shown),
-            [box, chat, shown],
-            [chat, box, links, gallery, large, table, notes, shown],
+            lambda message, chats, active: submit(assistant, config, message, chats, active),
+            [box, chats, tab_strip],
+            [chat, box, links, gallery, large, table, notes, chats, tab_strip],
         ).then(None, None, None, js=SCROLL_TO_QUESTION_JS)
+        plus.click(new_chat, chats, [chats, tab_strip, *view]).then(None, None, None, js=FOCUS_NOW_JS)
+        tab_strip.input(switch_chat, [chats, tab_strip], view).then(None, None, None, js=FOCUS_NOW_JS)
         gallery.select(select_screenshot, None, large)
-        clear_links.click(clear_page_links, None, [links, shown])
+        clear_links.click(clear_page_links, [chats, tab_strip], [links, chats])
         links.change(keep_viewer_when_unselected(show), links, list(viewer_outputs))
     return blocks
 

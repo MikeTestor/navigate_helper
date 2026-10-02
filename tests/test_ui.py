@@ -126,9 +126,50 @@ def test_a_later_answer_keeps_earlier_links(config):
     ]
 
 
-def test_clear_empties_the_list():
-    radio, shown = ui.clear_page_links()
-    assert radio["choices"] == [] and radio["visible"] is False and shown == []
+def test_clear_empties_the_active_conversations_list():
+    chats = [ui.Conversation(shown=[("A", "a.htm")]), ui.Conversation(shown=[("B", "b.htm")])]
+    radio, chats = ui.clear_page_links(chats, 1)
+    assert radio["choices"] == [] and radio["visible"] is False
+    assert chats[0].shown == [("A", "a.htm")] and chats[1].shown == []
+
+
+def test_a_new_chat_is_added_and_selected_with_empty_views():
+    chats = [ui.Conversation(title="eerste vraag", history=[{"role": "user", "content": "x"}])]
+    chats, tabs, history, links, gallery, large, rows, notes = ui.new_chat(chats)
+    assert len(chats) == 2 and tabs["value"] == 1
+    assert [label for label, _ in tabs["choices"]] == ["eerste vraag", "Chat 2"]
+    assert history == [] and links["visible"] is False and gallery == [] and large["value"] is None and rows == []
+
+
+def test_the_first_question_names_the_tab_and_long_names_are_cut(config):
+    chats = [ui.Conversation()]
+    *_, chats, tabs = ui.submit(FakeAssistant(make_answer()), config, "kort", chats, 0)
+    assert tabs["choices"] == [("kort", 0)]
+    *_, chats, tabs = ui.submit(FakeAssistant(make_answer()), config, "tweede", chats, 0)
+    assert tabs["choices"] == [("kort", 0)]  # only the first question names it
+    long = [ui.Conversation()]
+    *_, long, tabs = ui.submit(FakeAssistant(make_answer()), config, "een heel erg lange eerste vraag over iets", long, 0)
+    label = tabs["choices"][0][0]
+    assert len(label) == ui.TAB_TITLE_CHARS and label.endswith("…")
+
+
+def test_conversations_keep_their_own_history_links_and_views(config):
+    chats = [ui.Conversation()]
+    ui.submit(FakeAssistant(make_answer()), config, "vraag in chat 1", chats, 0)
+    chats, *_ = ui.new_chat(chats)
+    ui.submit(FakeAssistant(make_answer(text="Tweede antwoord.")), config, "vraag in chat 2", chats, 1)
+    history, links, gallery, large, rows, notes = ui.switch_chat(chats, 0)
+    assert [m["content"] for m in history] == ["vraag in chat 1", "Het antwoord."]
+    assert links["choices"] == [("Partner", "Partner.htm")] and len(gallery) == 2 and len(rows) == 3
+    assert "Fout#9" in notes
+    history, *_ = ui.switch_chat(chats, 1)
+    assert [m["content"] for m in history] == ["vraag in chat 2", "Tweede antwoord."]
+
+
+def test_a_blank_question_changes_nothing_in_the_conversation(config):
+    chats = [ui.Conversation()]
+    ui.submit(FakeAssistant(make_answer()), config, "  ", chats, 0)
+    assert chats[0].history == [] and chats[0].title == ""
 
 
 def test_a_failed_question_keeps_the_list(config):
@@ -193,6 +234,13 @@ def test_markdown_tab_has_a_copy_button_that_copies_the_source(config):
     assert "clipboard.writeText" in ui.COPY_MARKDOWN_JS
 
 
+def test_chat_blocks_have_a_tab_strip_and_a_plus_button(config):
+    blocks = ui.chat_blocks(FakeAssistant(make_answer()), config)
+    assert any(isinstance(b, gr.Button) and b.value == "+" for b in blocks.blocks.values())
+    strip = next(b for b in blocks.blocks.values() if isinstance(b, gr.Radio) and b.value == 0)
+    assert strip.choices == [("Chat 1", 0)]
+
+
 def test_question_box_is_focused_on_open(config):
     blocks = ui.chat_blocks(FakeAssistant(make_answer()), config)
     box = next(b for b in blocks.blocks.values() if getattr(b, "elem_id", None) == ui.QUESTION_ID)
@@ -214,5 +262,6 @@ def test_run_builds_the_assistant_once_and_serves_raw(monkeypatch, config):
     assert f"#{ui.CHAT_ID} .message-wrap > .message-buttons" in launched["css"]  # copy button beside the message text
     assert f"#{ui.CHAT_ID} .message-buttons .icon-button-wrapper {{ margin: 0; }}" in launched["css"]  # equal sizes
     assert f"#{ui.LEFT_ID} {{ height: calc(100vh" in launched["css"]  # question box pinned to the bottom left
+    assert f"#{ui.TABS_ID} input[type=radio] {{ display: none; }}" in launched["css"]  # the Radio looks like tabs
     # refocuses the question box when the browser tab is selected again
     assert ui.QUESTION_ID in launched["js"] and "addEventListener('focus'" in launched["js"]
