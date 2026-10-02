@@ -14,14 +14,14 @@ def build_page_viewer(config: Config | None = None):
     """The Page viewer components, to be called inside a `gr.Blocks`; returns `((heading, raw, cleaned), show, tabs)`.
 
     `show(page_file)` loads the viewer; the chat app calls it when a Page Link is chosen. The heading sits above
-    `tabs` (Markdown page, Manual page); the caller can re-enter `tabs` to add its own tab.
+    `tabs` (Manual page, Markdown page); the caller can re-enter `tabs` to add its own tab.
     """
     heading = gr.HTML()
     with gr.Tabs() as tabs:  # tabs rather than columns: each gets the full width of the narrow right-hand side
-        with gr.Tab("Markdown page"):
-            cleaned = gr.Markdown()
         with gr.Tab("Manual page"):
             raw = gr.HTML()
+        with gr.Tab("Markdown page"):
+            cleaned = gr.Markdown()
 
     def show(page_file: str | None):
         view = page_viewer(page_file, config)
@@ -150,7 +150,7 @@ def keep_viewer_when_unselected(show):
 
 
 def chat_blocks(assistant, config: Config) -> gr.Blocks:
-    """Chat on the left, tabs (Markdown page, Manual page, Debug) on the right."""
+    """Chat on the left, tabs (Manual page, Markdown page, Debug) on the right."""
     with gr.Blocks(title="Navigate Helper") as blocks:
         with gr.Row():
             with gr.Column(scale=2):

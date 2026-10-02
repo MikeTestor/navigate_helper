@@ -157,7 +157,7 @@ def test_chat_blocks_build_with_a_fake_assistant(config):
     blocks = ui.chat_blocks(FakeAssistant(make_answer()), config)
     assert isinstance(blocks, gr.Blocks)
     tabs = [b.label for b in blocks.blocks.values() if isinstance(b, gr.Tab)]
-    assert tabs == ["Markdown page", "Manual page", "Debug"]
+    assert tabs == ["Manual page", "Markdown page", "Debug"]
     assert len({b.parent for b in blocks.blocks.values() if isinstance(b, gr.Tab)}) == 1  # one row of tabs
 
 
