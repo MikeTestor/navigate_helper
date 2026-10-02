@@ -58,7 +58,8 @@ CHAT_CSS = f"""
 #{CHAT_ID} {{ height: auto !important; flex: 1 1 0 !important; min-height: 200px; }}
 #{CHAT_ID} .message-wrap {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 4px; }}
 #{CHAT_ID} .message-wrap > .message-row {{ grid-column: 1; }}
-#{CHAT_ID} .message-wrap > .message-buttons {{ grid-column: 2; align-self: start; margin: 20px 0 0 0; width: auto; }}
+#{CHAT_ID} .message-wrap > .message-buttons {{ grid-column: 2; align-self: start; justify-self: start; margin: 20px 0 0 0; width: auto; }}
+#{CHAT_ID} .message-buttons .icon-button-wrapper {{ margin: 0; }}  /* same size for user and assistant messages */
 """
 
 DEBUG_HEADERS = ["chunk_id", "page title", "heading path", "score", "cited", "text"]

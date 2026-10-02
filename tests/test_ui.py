@@ -193,6 +193,7 @@ def test_run_builds_the_assistant_once_and_serves_raw(monkeypatch, config):
     assert built == [config]
     assert str(config.raw_dir.resolve()) in launched["allowed_paths"]
     assert f"#{ui.CHAT_ID} .message-wrap > .message-buttons" in launched["css"]  # copy button beside the message text
+    assert f"#{ui.CHAT_ID} .message-buttons .icon-button-wrapper {{ margin: 0; }}" in launched["css"]  # equal sizes
     assert f"#{ui.LEFT_ID} {{ height: calc(100vh" in launched["css"]  # question box pinned to the bottom left
     # refocuses the question box when the browser tab is selected again
     assert ui.QUESTION_ID in launched["js"] and "addEventListener('focus'" in launched["js"]
