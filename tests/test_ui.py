@@ -65,6 +65,11 @@ def test_debug_rows_follow_the_spec_columns(config):
     assert view.debug_rows[2][4] == ""
 
 
+def test_debug_table_has_a_width_for_every_column():
+    assert len(ui.DEBUG_COLUMN_WIDTHS) == len(ui.DEBUG_HEADERS)
+    assert sum(int(w.rstrip("%")) for w in ui.DEBUG_COLUMN_WIDTHS) == 100
+
+
 def test_debug_notes_show_dropped_citations_error_and_uncited(config):
     assert "Fout#9" in ui.answer_view(make_answer(), config).debug_notes
     uncited = make_answer(cited=[], dropped_citation_ids=[])

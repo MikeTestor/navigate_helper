@@ -73,6 +73,10 @@ CHAT_CSS = f"""
 """
 
 DEBUG_HEADERS = ["chunk_id", "page title", "heading path", "score", "cited", "text"]
+# One line per Chunk so all Retrieved Chunks fit; clicking a cell shows its full text (wrapped rows made the
+# text column a one-word-wide strip and a single Chunk filled the table).
+DEBUG_COLUMN_WIDTHS = ["20%", "14%", "16%", "7%", "7%", "36%"]
+DEBUG_TABLE_HEIGHT = 600
 
 
 @dataclass
@@ -193,7 +197,10 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
             with gr.Column(scale=3):
                 viewer_outputs, show, tabs = build_page_viewer(config)
                 with tabs, gr.Tab("Debug"):
-                    table = gr.Dataframe(headers=DEBUG_HEADERS, interactive=False, wrap=True)
+                    table = gr.Dataframe(
+                        headers=DEBUG_HEADERS, interactive=False, wrap=False, column_widths=DEBUG_COLUMN_WIDTHS,
+                        max_height=DEBUG_TABLE_HEIGHT,
+                    )
                     notes = gr.Markdown()
                 with tabs, gr.Tab("Screenshots"):
                     gallery = gr.Gallery(label="Alle screenshots", columns=4, height=220, allow_preview=False)
