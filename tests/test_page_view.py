@@ -32,6 +32,11 @@ def iframe_doc(view):
     return unescape(view.raw_html[start : view.raw_html.index('" style=', start)])
 
 
+def test_iframe_fills_the_window_height(config):
+    view = page_viewer("with_files.htm", config)
+    assert "height:calc(100vh - 320px)" in view.raw_html and "min-height:300px" in view.raw_html
+
+
 def test_iframe_is_sandboxed_without_scripts(config):
     view = page_viewer("with_files.htm", config)
     assert 'sandbox="allow-same-origin"' in view.raw_html and "allow-scripts" not in view.raw_html

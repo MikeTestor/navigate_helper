@@ -17,7 +17,8 @@ from navigate_helper.clean import collapse
 from navigate_helper.config import Config, load_config
 
 FILE_URL_PREFIX = "/gradio_api/file="
-IFRAME_HEIGHT = 560
+IFRAME_HEIGHT = "calc(100vh - 320px)"  # fills the window below the heading and tabs; see also IFRAME_MIN_HEIGHT
+IFRAME_MIN_HEIGHT = "300px"
 
 _EXTERNAL = re.compile(r"^(https?:|mailto:|data:|//)", re.IGNORECASE)
 _FRONT_MATTER = re.compile(r"\A---\n.*?\n---\n\n?", re.DOTALL)
@@ -87,10 +88,10 @@ def rewrite_cleaned(markdown: str, raw_dir: Path) -> str:
     return _MD_PAGE_LINK.sub(lambda m: m.group(1), _MD_IMAGE.sub(image, markdown))
 
 
-def raw_iframe(rewritten: str, height: int = IFRAME_HEIGHT) -> str:
+def raw_iframe(rewritten: str, height: str = IFRAME_HEIGHT) -> str:
     return (
         f'<iframe sandbox="allow-same-origin" srcdoc="{html.escape(rewritten)}" '
-        f'style="width:100%;height:{height}px;border:1px solid #ccc"></iframe>'
+        f'style="width:100%;height:{height};min-height:{IFRAME_MIN_HEIGHT};border:1px solid #ccc"></iframe>'
     )
 
 
