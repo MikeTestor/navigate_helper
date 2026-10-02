@@ -62,9 +62,14 @@ def answer_view(answer: Answer, config: Config) -> AnswerView:
             if path is not None:
                 gallery.append((str(path), f"{chunk.page_title} / {src.rsplit('/', 1)[-1]}"))
 
-    links = [(link["title"], link["page_file"]) for link in answer.page_links]
-    if not answer.covered:
-        links += [(p["page_title"], p["page_file"]) for p in answer.source_pages]
+    # The Answer's own pages first (the closest ones when it is not covered), then the Manual's Page Links.
+    links, seen_pages = [], set()
+    candidates = [(p["page_title"], p["page_file"]) for p in answer.source_pages]
+    candidates += [(link["title"], link["page_file"]) for link in answer.page_links]
+    for title, page_file in candidates:
+        if page_file not in seen_pages:
+            seen_pages.add(page_file)
+            links.append((title, page_file))
 
     rows = [
         [c.chunk_id, c.page_title, " > ".join(c.heading_path), c.score, "ja" if c.cited else "", c.text]
@@ -92,7 +97,8 @@ def respond(assistant, config: Config, message: str, history: list[dict]):
         return history, "", gr.update(choices=[], value=None, visible=False), [], [], f"**error:** {error}"
     view = answer_view(answer, config)
     history.append({"role": "assistant", "content": answer.text})
-    radio = gr.update(choices=view.page_link_choices, value=None, visible=bool(view.page_link_choices))
+    first = view.page_link_choices[0][1] if view.page_link_choices else None  # preselected: loads the viewer
+    radio = gr.update(choices=view.page_link_choices, value=first, visible=bool(view.page_link_choices))
     return history, "", radio, view.gallery, view.debug_rows, view.debug_notes
 
 
@@ -117,7 +123,7 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
             [box, chat],
             [chat, box, links, gallery, table, notes],
         )
-        links.input(show, links, list(viewer_outputs))
+        links.change(show, links, list(viewer_outputs))
     return blocks
 
 

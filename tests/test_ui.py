@@ -62,6 +62,12 @@ def test_debug_notes_show_dropped_citations_error_and_uncited(config):
     assert "LLMError: boom" in notes and "geen geldige bronverwijzing" not in notes
 
 
+def test_covered_answer_lists_its_source_pages_before_the_page_links(config):
+    sources = [{"page_file": "Budgetten.htm", "page_title": "Budgetten"}, {"page_file": "Partner.htm", "page_title": "Partner"}]
+    view = ui.answer_view(make_answer(source_pages=sources), config)
+    assert view.page_link_choices == [("Budgetten", "Budgetten.htm"), ("Partner", "Partner.htm")]
+
+
 def test_uncovered_answer_offers_the_closest_pages_as_links(config):
     answer = make_answer(covered=False, cited=[], page_links=[], source_pages=[{"page_file": "Acties.htm", "page_title": "Acties"}])
     assert ui.answer_view(answer, config).page_link_choices == [("Acties", "Acties.htm")]
@@ -85,6 +91,14 @@ def test_respond_appends_the_answer_to_the_chat(config):
     assert history == [{"role": "user", "content": "vraag"}, {"role": "assistant", "content": "Het antwoord."}]
     assert len(gallery) == 2 and len(rows) == 3 and "Fout#9" in notes
     assert links["choices"] == [("Partner", "Partner.htm")]
+
+
+def test_respond_preselects_the_first_page_so_the_viewer_loads(config):
+    sources = [{"page_file": "Budgetten.htm", "page_title": "Budgetten"}]
+    links = ui.respond(FakeAssistant(make_answer(source_pages=sources)), config, "vraag", [])[2]
+    assert links["value"] == "Budgetten.htm"
+    none = ui.respond(FakeAssistant(make_answer(page_links=[])), config, "vraag", [])[2]
+    assert none["value"] is None and none["visible"] is False
 
 
 def test_respond_reports_retrieval_errors_in_the_chat(config):
