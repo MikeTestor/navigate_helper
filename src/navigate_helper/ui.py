@@ -84,12 +84,14 @@ CHAT_CSS = f"""
 #{CHAT_ID} .message-wrap {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 4px; }}
 #{CHAT_ID} .message-wrap > .message-row {{ grid-column: 1; }}
 #{CHAT_ID} .message-wrap > .message-buttons {{ grid-column: 2; align-self: start; justify-self: start; margin: 20px 0 0 0; width: auto; }}
-#{TABS_ID} {{ align-items: center; gap: 4px; flex-wrap: nowrap; }}
-#{TABS_ID} > fieldset {{ flex: 0 1 auto !important; width: auto !important; min-width: 0 !important; }}
-#{TABS_ID} fieldset .wrap {{ flex-wrap: nowrap; overflow-x: auto; }}
-#{TABS_ID} input[type=radio] {{ display: none; }}  /* the Radio is shown as a row of tabs */
-#{TABS_ID} label {{ border-radius: 6px 6px 0 0; }}
-#{TABS_ID} label.selected {{ border-bottom: 2px solid var(--color-accent); font-weight: 600; }}
+#{TABS_ID} {{ align-items: center; gap: 2px; flex-wrap: nowrap; overflow-x: auto; }}
+#{LEFT_ID} > .column {{ flex: 0 0 auto; }}  /* the box gr.render draws the tab strip in must not take the chat's space */
+#{TABS_ID} button {{ flex: 0 0 auto; white-space: nowrap; }}
+#{TABS_ID} .chat-tab {{ gap: 0; flex: 0 0 auto; width: fit-content; min-width: 0; border-bottom: 2px solid transparent; }}
+#{TABS_ID} .chat-tab.selected {{ border-bottom-color: var(--color-accent); }}
+#{TABS_ID} .chat-tab.selected .chat-tab-title {{ font-weight: 600; }}
+#{TABS_ID} .chat-tab-title, #{TABS_ID} .chat-tab-close {{ background: transparent; border: none; box-shadow: none; }}
+#{TABS_ID} .chat-tab-close {{ padding: 0 6px; opacity: 0.6; }}
 #{CHAT_ID} .message-buttons .icon-button-wrapper {{ margin: 0; }}  /* same size for user and assistant messages */
 """
 
@@ -209,15 +211,15 @@ class Conversation:
 TAB_TITLE_CHARS = 24
 
 
-def chat_tabs(chats: list[Conversation], active: int):
-    """The tab strip: one entry per conversation, named after its first question."""
+def tab_labels(chats: list[Conversation]) -> list[str]:
+    """One label per tab: the first question, cut to `TAB_TITLE_CHARS`, or "Chat N" until there is one."""
     labels = []
     for number, chat in enumerate(chats, start=1):
         title = chat.title.strip()
         if len(title) > TAB_TITLE_CHARS:
             title = title[: TAB_TITLE_CHARS - 1].rstrip() + "…"
-        labels.append((title or f"Chat {number}", number - 1))
-    return gr.update(choices=labels, value=active)
+        labels.append(title or f"Chat {number}")
+    return labels
 
 
 def chat_view(chat: Conversation):
@@ -227,28 +229,38 @@ def chat_view(chat: Conversation):
 
 
 def new_chat(chats: list[Conversation]):
-    """The + button: add an empty conversation and switch to it."""
+    """The + button: add an empty conversation and switch to it. Returns (chats, active, *chat_view)."""
     chats = list(chats) + [Conversation()]
     active = len(chats) - 1
-    return (chats, chat_tabs(chats, active), *chat_view(chats[active]))
+    return (chats, active, *chat_view(chats[active]))
 
 
-def close_chat(chats: list[Conversation], active: int):
-    """The × button: remove the active conversation. The next one takes its place; the last one is never left empty."""
+def close_chat(chats: list[Conversation], active: int, index: int):
+    """The × on a tab: remove that conversation. Returns (chats, active, *chat_view).
+
+    The active tab stays active unless it is the one closed; then the next one takes its place. The last
+    conversation is never removed outright: it is replaced by an empty one.
+    """
     chats = list(chats)
-    del chats[active]
+    del chats[index]
     if not chats:
         chats = [Conversation()]
+    if index < active:
+        active -= 1
     active = min(active, len(chats) - 1)
-    return (chats, chat_tabs(chats, active), *chat_view(chats[active]))
+    return (chats, active, *chat_view(chats[active]))
 
 
-def switch_chat(chats: list[Conversation], active: int):
-    return chat_view(chats[active])
+def switch_chat(chats: list[Conversation], index: int):
+    """A tab's title: returns (active, *chat_view)."""
+    return (index, *chat_view(chats[index]))
 
 
-def submit(assistant, config: Config, message: str, chats: list[Conversation], active: int):
-    """One turn in the active conversation: the `respond` outputs plus the updated conversations and tab strip."""
+def submit(assistant, config: Config, message: str, chats: list[Conversation], active: int, revision: int):
+    """One turn in the active conversation: the `respond` outputs, the updated conversations and tab revision.
+
+    The revision goes up when a tab gets its name (the first question), so the tab strip redraws.
+    """
     chat = chats[active]
     history, box, links, gallery, large, rows, notes, shown = respond(
         assistant, config, message, chat.history, chat.shown
@@ -256,8 +268,10 @@ def submit(assistant, config: Config, message: str, chats: list[Conversation], a
     if message.strip():
         chat.history, chat.shown = history, shown
         chat.gallery, chat.large, chat.rows, chat.notes = gallery, large, rows, notes
-        chat.title = chat.title or message.strip()
-    return history, box, links, gallery, large, rows, notes, chats, chat_tabs(chats, active)
+        if not chat.title:
+            chat.title = message.strip()
+            revision += 1
+    return history, box, links, gallery, large, rows, notes, chats, revision
 
 
 def clear_page_links(chats: list[Conversation], active: int):
@@ -277,14 +291,34 @@ def keep_viewer_when_unselected(show):
 def chat_blocks(assistant, config: Config) -> gr.Blocks:
     """Chat on the left, tabs (Manual page, Markdown page, Debug) on the right."""
     with gr.Blocks(title="Navigate Helper") as blocks:
+        chats = gr.State([Conversation()])
+        active = gr.State(0)
+        revision = gr.State(0)  # bumped whenever the tab strip must be redrawn
+        focus = dict(fn=None, inputs=None, outputs=None, js=FOCUS_NOW_JS)
         with gr.Row():
             with gr.Column(scale=2, elem_id=LEFT_ID):
-                with gr.Row(elem_id=TABS_ID):
-                    tab_strip = gr.Radio(
-                        choices=[("Chat 1", 0)], value=0, show_label=False, container=False, scale=0, min_width=0,
-                    )
-                    plus = gr.Button("+", size="sm", scale=0, min_width=44)
-                    close = gr.Button("×", size="sm", scale=0, min_width=44)
+                @gr.render(inputs=[chats, active], triggers=[blocks.load, revision.change])
+                def draw_tabs(chats_now, active_now):
+                    """The tab strip: a title and a × per conversation, and a + at the end."""
+                    with gr.Row(elem_id=TABS_ID):
+                        for index, label in enumerate(tab_labels(chats_now)):
+                            selected = index == active_now
+                            with gr.Row(elem_classes=["chat-tab", "selected" if selected else ""]):
+                                title = gr.Button(label, size="sm", scale=0, min_width=0, elem_classes=["chat-tab-title"])
+                                close = gr.Button("×", size="sm", scale=0, min_width=0, elem_classes=["chat-tab-close"])
+                            title.click(
+                                lambda chats, rev, index=index: (*switch_chat(chats, index), rev + 1),
+                                [chats, revision], [active, *view, revision],
+                            ).then(**focus)
+                            close.click(
+                                lambda chats, active, rev, index=index: (*close_chat(chats, active, index), rev + 1),
+                                [chats, active, revision], [chats, active, *view, revision],
+                            ).then(**focus)
+                        plus = gr.Button("+", size="sm", scale=0, min_width=44)
+                        plus.click(
+                            lambda chats, rev: (*new_chat(chats), rev + 1),
+                            [chats, revision], [chats, active, *view, revision],
+                        ).then(**focus)
                 chat = gr.Chatbot(elem_id=CHAT_ID, autoscroll=False)
                 links = gr.Radio(label="Page Links (kies om te openen)", visible=False)
                 clear_links = gr.Button("Wis lijst", size="sm")
@@ -300,18 +334,15 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
                 with tabs, gr.Tab("Screenshots"):
                     gallery = gr.Gallery(label="Alle screenshots", columns=4, height=220, allow_preview=False)
                     large = gr.Image(label="Screenshot", interactive=False)
-        chats = gr.State([Conversation()])
         view = [chat, links, gallery, large, table, notes]
+
         box.submit(
-            lambda message, chats, active: submit(assistant, config, message, chats, active),
-            [box, chats, tab_strip],
-            [chat, box, links, gallery, large, table, notes, chats, tab_strip],
+            lambda message, chats, active, rev: submit(assistant, config, message, chats, active, rev),
+            [box, chats, active, revision],
+            [chat, box, links, gallery, large, table, notes, chats, revision],
         ).then(None, None, None, js=SCROLL_TO_QUESTION_JS)
-        plus.click(new_chat, chats, [chats, tab_strip, *view]).then(None, None, None, js=FOCUS_NOW_JS)
-        close.click(close_chat, [chats, tab_strip], [chats, tab_strip, *view]).then(None, None, None, js=FOCUS_NOW_JS)
-        tab_strip.input(switch_chat, [chats, tab_strip], view).then(None, None, None, js=FOCUS_NOW_JS)
         gallery.select(select_screenshot, None, large)
-        clear_links.click(clear_page_links, [chats, tab_strip], [links, chats])
+        clear_links.click(clear_page_links, [chats, active], [links, chats])
         links.change(keep_viewer_when_unselected(show), links, list(viewer_outputs))
     return blocks
 

@@ -133,64 +133,74 @@ def test_clear_empties_the_active_conversations_list():
     assert chats[0].shown == [("A", "a.htm")] and chats[1].shown == []
 
 
-def test_a_new_chat_is_added_and_selected_with_empty_views():
-    chats = [ui.Conversation(title="eerste vraag", history=[{"role": "user", "content": "x"}])]
-    chats, tabs, history, links, gallery, large, rows, notes = ui.new_chat(chats)
-    assert len(chats) == 2 and tabs["value"] == 1
-    assert [label for label, _ in tabs["choices"]] == ["eerste vraag", "Chat 2"]
-    assert history == [] and links["visible"] is False and gallery == [] and large["value"] is None and rows == []
-
-
 def make_chats(*titles):
     return [ui.Conversation(title=t, history=[{"role": "user", "content": t}]) for t in titles]
 
 
-def test_closing_a_chat_removes_it_and_the_next_one_takes_its_place():
-    chats, tabs, history, *_ = ui.close_chat(make_chats("a", "b", "c"), 1)
-    assert [c.title for c in chats] == ["a", "c"]
-    assert tabs["value"] == 1 and history == [{"role": "user", "content": "c"}]
+def test_a_new_chat_is_added_and_selected_with_empty_views():
+    chats, active, history, links, gallery, large, rows, notes = ui.new_chat(make_chats("eerste vraag"))
+    assert len(chats) == 2 and active == 1 and ui.tab_labels(chats) == ["eerste vraag", "Chat 2"]
+    assert history == [] and links["visible"] is False and gallery == [] and large["value"] is None and rows == []
+
+
+def test_closing_the_active_chat_lets_the_next_one_take_its_place():
+    chats, active, history, *_ = ui.close_chat(make_chats("a", "b", "c"), 1, 1)
+    assert [c.title for c in chats] == ["a", "c"] and active == 1
+    assert history == [{"role": "user", "content": "c"}]
 
 
 def test_closing_the_last_tab_selects_the_one_before():
-    chats, tabs, history, *_ = ui.close_chat(make_chats("a", "b"), 1)
-    assert [c.title for c in chats] == ["a"] and tabs["value"] == 0
-    assert history == [{"role": "user", "content": "a"}]
+    chats, active, history, *_ = ui.close_chat(make_chats("a", "b"), 1, 1)
+    assert [c.title for c in chats] == ["a"] and active == 0 and history == [{"role": "user", "content": "a"}]
+
+
+def test_closing_another_tab_keeps_the_active_chat():
+    chats, active, history, *_ = ui.close_chat(make_chats("a", "b", "c"), 2, 0)  # c is active, a is closed
+    assert [c.title for c in chats] == ["b", "c"] and active == 1
+    assert history == [{"role": "user", "content": "c"}]
+    chats, active, *_ = ui.close_chat(make_chats("a", "b", "c"), 0, 2)  # a is active, c is closed
+    assert [c.title for c in chats] == ["a", "b"] and active == 0
 
 
 def test_closing_the_only_chat_leaves_one_empty_chat():
-    chats, tabs, history, links, gallery, large, rows, notes = ui.close_chat(make_chats("a"), 0)
-    assert len(chats) == 1 and chats[0].title == "" and history == []
-    assert tabs["choices"] == [("Chat 1", 0)] and links["visible"] is False
+    chats, active, history, links, *_ = ui.close_chat(make_chats("a"), 0, 0)
+    assert len(chats) == 1 and chats[0].title == "" and active == 0 and history == []
+    assert ui.tab_labels(chats) == ["Chat 1"] and links["visible"] is False
+
+
+def test_switching_returns_the_index_and_that_chats_views():
+    active, history, *_ = ui.switch_chat(make_chats("a", "b"), 1)
+    assert active == 1 and history == [{"role": "user", "content": "b"}]
 
 
 def test_the_first_question_names_the_tab_and_long_names_are_cut(config):
     chats = [ui.Conversation()]
-    *_, chats, tabs = ui.submit(FakeAssistant(make_answer()), config, "kort", chats, 0)
-    assert tabs["choices"] == [("kort", 0)]
-    *_, chats, tabs = ui.submit(FakeAssistant(make_answer()), config, "tweede", chats, 0)
-    assert tabs["choices"] == [("kort", 0)]  # only the first question names it
+    *_, chats, revision = ui.submit(FakeAssistant(make_answer()), config, "kort", chats, 0, 0)
+    assert ui.tab_labels(chats) == ["kort"] and revision == 1  # the tab strip must redraw
+    *_, chats, revision = ui.submit(FakeAssistant(make_answer()), config, "tweede", chats, 0, revision)
+    assert ui.tab_labels(chats) == ["kort"] and revision == 1  # only the first question names it
     long = [ui.Conversation()]
-    *_, long, tabs = ui.submit(FakeAssistant(make_answer()), config, "een heel erg lange eerste vraag over iets", long, 0)
-    label = tabs["choices"][0][0]
+    *_, long, _ = ui.submit(FakeAssistant(make_answer()), config, "een heel erg lange eerste vraag over iets", long, 0, 0)
+    label = ui.tab_labels(long)[0]
     assert len(label) == ui.TAB_TITLE_CHARS and label.endswith("…")
 
 
 def test_conversations_keep_their_own_history_links_and_views(config):
     chats = [ui.Conversation()]
-    ui.submit(FakeAssistant(make_answer()), config, "vraag in chat 1", chats, 0)
+    ui.submit(FakeAssistant(make_answer()), config, "vraag in chat 1", chats, 0, 0)
     chats, *_ = ui.new_chat(chats)
-    ui.submit(FakeAssistant(make_answer(text="Tweede antwoord.")), config, "vraag in chat 2", chats, 1)
-    history, links, gallery, large, rows, notes = ui.switch_chat(chats, 0)
+    ui.submit(FakeAssistant(make_answer(text="Tweede antwoord.")), config, "vraag in chat 2", chats, 1, 0)
+    _, history, links, gallery, large, rows, notes = ui.switch_chat(chats, 0)
     assert [m["content"] for m in history] == ["vraag in chat 1", "Het antwoord."]
     assert links["choices"] == [("Partner", "Partner.htm")] and len(gallery) == 2 and len(rows) == 3
     assert "Fout#9" in notes
-    history, *_ = ui.switch_chat(chats, 1)
+    _, history, *_ = ui.switch_chat(chats, 1)
     assert [m["content"] for m in history] == ["vraag in chat 2", "Tweede antwoord."]
 
 
 def test_a_blank_question_changes_nothing_in_the_conversation(config):
     chats = [ui.Conversation()]
-    ui.submit(FakeAssistant(make_answer()), config, "  ", chats, 0)
+    ui.submit(FakeAssistant(make_answer()), config, "  ", chats, 0, 0)
     assert chats[0].history == [] and chats[0].title == ""
 
 
@@ -256,12 +266,9 @@ def test_markdown_tab_has_a_copy_button_that_copies_the_source(config):
     assert "clipboard.writeText" in ui.COPY_MARKDOWN_JS
 
 
-def test_chat_blocks_have_a_tab_strip_and_a_plus_button(config):
+def test_chat_blocks_draw_the_tab_strip_at_load_and_when_the_revision_changes(config):
     blocks = ui.chat_blocks(FakeAssistant(make_answer()), config)
-    assert any(isinstance(b, gr.Button) and b.value == "+" for b in blocks.blocks.values())
-    assert any(isinstance(b, gr.Button) and b.value == "×" for b in blocks.blocks.values())
-    strip = next(b for b in blocks.blocks.values() if isinstance(b, gr.Radio) and b.value == 0)
-    assert strip.choices == [("Chat 1", 0)]
+    assert len(blocks.renderables) == 1  # draw_tabs: a title and × per chat, and a +
 
 
 def test_question_box_is_focused_on_open(config):
@@ -285,6 +292,7 @@ def test_run_builds_the_assistant_once_and_serves_raw(monkeypatch, config):
     assert f"#{ui.CHAT_ID} .message-wrap > .message-buttons" in launched["css"]  # copy button beside the message text
     assert f"#{ui.CHAT_ID} .message-buttons .icon-button-wrapper {{ margin: 0; }}" in launched["css"]  # equal sizes
     assert f"#{ui.LEFT_ID} {{ height: calc(100vh" in launched["css"]  # question box pinned to the bottom left
-    assert f"#{ui.TABS_ID} input[type=radio] {{ display: none; }}" in launched["css"]  # the Radio looks like tabs
+    assert f"#{ui.TABS_ID} .chat-tab.selected" in launched["css"]  # the active tab is marked
+    assert f"#{ui.LEFT_ID} > .column {{ flex: 0 0 auto; }}" in launched["css"]  # the tab strip leaves the chat its height
     # refocuses the question box when the browser tab is selected again
     assert ui.QUESTION_ID in launched["js"] and "addEventListener('focus'" in launched["js"]
