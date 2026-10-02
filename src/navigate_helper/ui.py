@@ -105,6 +105,7 @@ def respond(assistant, config: Config, message: str, history: list[dict]):
     """One chat turn: returns (history, textbox, page link radio, gallery, debug rows, debug notes)."""
     if not message.strip():
         return history, message, gr.update(), gr.update(), gr.update(), gr.update()
+    first_question = not history
     history = history + [{"role": "user", "content": message}]
     try:
         answer = assistant.ask(message)
@@ -113,9 +114,19 @@ def respond(assistant, config: Config, message: str, history: list[dict]):
         return history, "", gr.update(choices=[], value=None, visible=False), [], [], f"**error:** {error}"
     view = answer_view(answer, config)
     history.append({"role": "assistant", "content": answer.text})
-    first = view.page_link_choices[0][1] if view.page_link_choices else None  # preselected: loads the viewer
-    radio = gr.update(choices=view.page_link_choices, value=first, visible=bool(view.page_link_choices))
+    # Only the first Answer preselects a page (which loads the viewer); later Answers leave the viewer alone.
+    preselected = view.page_link_choices[0][1] if first_question and view.page_link_choices else None
+    radio = gr.update(choices=view.page_link_choices, value=preselected, visible=bool(view.page_link_choices))
     return history, "", radio, view.gallery, view.debug_rows, view.debug_notes
+
+
+def keep_viewer_when_unselected(show):
+    """Wrap the Page viewer's `show` so that clearing the radio (a new Answer) leaves the viewer as it is."""
+
+    def wrapped(page_file: str | None):
+        return show(page_file) if page_file else (gr.update(), gr.update(), gr.update())
+
+    return wrapped
 
 
 def chat_blocks(assistant, config: Config) -> gr.Blocks:
@@ -139,7 +150,7 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
             [box, chat],
             [chat, box, links, gallery, table, notes],
         )
-        links.change(show, links, list(viewer_outputs))
+        links.change(keep_viewer_when_unselected(show), links, list(viewer_outputs))
     return blocks
 
 

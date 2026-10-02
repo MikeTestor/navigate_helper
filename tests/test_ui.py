@@ -93,6 +93,21 @@ def test_respond_appends_the_answer_to_the_chat(config):
     assert links["choices"] == [("Partner", "Partner.htm")]
 
 
+def test_later_answers_do_not_preselect_a_page(config):
+    sources = [{"page_file": "Budgetten.htm", "page_title": "Budgetten"}]
+    history = [{"role": "user", "content": "eerder"}, {"role": "assistant", "content": "antwoord"}]
+    links = ui.respond(FakeAssistant(make_answer(source_pages=sources)), config, "vraag", history)[2]
+    assert links["value"] is None and links["visible"] is True
+    assert links["choices"][0] == ("Budgetten", "Budgetten.htm")
+
+
+def test_clearing_the_radio_leaves_the_viewer_unchanged():
+    shown = []
+    wrapped = ui.keep_viewer_when_unselected(lambda page: shown.append(page) or ("h", "r", "c"))
+    assert wrapped("Budgetten.htm") == ("h", "r", "c")
+    assert len(wrapped(None)) == 3 and shown == ["Budgetten.htm"]
+
+
 def test_respond_preselects_the_first_page_so_the_viewer_loads(config):
     sources = [{"page_file": "Budgetten.htm", "page_title": "Budgetten"}]
     links = ui.respond(FakeAssistant(make_answer(source_pages=sources)), config, "vraag", [])[2]
