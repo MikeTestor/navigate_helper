@@ -38,6 +38,13 @@ def page_viewer_blocks(config: Config | None = None) -> gr.Blocks:
     return blocks
 
 
+QUESTION_ID = "question"
+# Autofocus covers opening the app; this refocuses the question box when the browser tab is selected again.
+FOCUS_QUESTION_JS = (
+    "() => { const focus = () => document.querySelector('#" + QUESTION_ID + " textarea')?.focus();"
+    " window.addEventListener('focus', focus); }"
+)
+
 DEBUG_HEADERS = ["chunk_id", "page title", "heading path", "score", "cited", "text"]
 
 
@@ -110,7 +117,7 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
                 chat = gr.Chatbot(height=420)
                 links = gr.Radio(label="Page Links (kies om te openen)", visible=False)
                 gallery = gr.Gallery(label="Screenshots", columns=3, height=200)
-                box = gr.Textbox(placeholder="Stel een vraag", show_label=False)
+                box = gr.Textbox(placeholder="Stel een vraag", show_label=False, elem_id=QUESTION_ID, autofocus=True)
             with gr.Column(scale=3):
                 with gr.Tabs():
                     with gr.Tab("Page viewer"):
@@ -129,7 +136,9 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
 
 def run(config: Config) -> None:
     assistant = build_assistant(config)  # once, at startup (slow: loads the e5 model)
-    chat_blocks(assistant, config).launch(allowed_paths=[str(config.raw_dir.resolve()), str(view_dir())])
+    chat_blocks(assistant, config).launch(
+        allowed_paths=[str(config.raw_dir.resolve()), str(view_dir())], js=FOCUS_QUESTION_JS
+    )
 
 
 if __name__ == "__main__":

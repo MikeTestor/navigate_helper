@@ -119,6 +119,12 @@ def test_chat_blocks_build_with_a_fake_assistant(config):
     assert {"Page viewer", "Debug"} <= labels
 
 
+def test_question_box_is_focused_on_open(config):
+    blocks = ui.chat_blocks(FakeAssistant(make_answer()), config)
+    box = next(b for b in blocks.blocks.values() if getattr(b, "elem_id", None) == ui.QUESTION_ID)
+    assert box.autofocus is True
+
+
 def test_run_builds_the_assistant_once_and_serves_raw(monkeypatch, config):
     built, launched = [], {}
 
@@ -131,3 +137,5 @@ def test_run_builds_the_assistant_once_and_serves_raw(monkeypatch, config):
     ui.run(config)
     assert built == [config]
     assert str(config.raw_dir.resolve()) in launched["allowed_paths"]
+    # refocuses the question box when the browser tab is selected again
+    assert ui.QUESTION_ID in launched["js"] and "addEventListener('focus'" in launched["js"]
