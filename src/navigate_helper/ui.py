@@ -11,22 +11,23 @@ from navigate_helper.page_view import page_viewer, resolve_image, view_dir
 
 
 def build_page_viewer(config: Config | None = None):
-    """The Page viewer components, to be called inside a `gr.Blocks`; returns `(page_input, show)`.
+    """The Page viewer components, to be called inside a `gr.Blocks`; returns `((heading, raw, cleaned), show, tabs)`.
 
-    `show(page_file)` loads the viewer; the chat app calls it when a Page Link is chosen.
+    `show(page_file)` loads the viewer; the chat app calls it when a Page Link is chosen. The heading sits above
+    `tabs` (Markdown page, Manual page); the caller can re-enter `tabs` to add its own tab.
     """
     heading = gr.HTML()
-    with gr.Tabs():  # sub-tabs rather than columns: each gets the full width of the narrow right-hand side
-        with gr.Tab("Manual Page"):
-            raw = gr.HTML()
-        with gr.Tab("Cleaned Page"):
+    with gr.Tabs() as tabs:  # tabs rather than columns: each gets the full width of the narrow right-hand side
+        with gr.Tab("Markdown page"):
             cleaned = gr.Markdown()
+        with gr.Tab("Manual page"):
+            raw = gr.HTML()
 
     def show(page_file: str | None):
         view = page_viewer(page_file, config)
         return view.heading, view.raw_html, view.cleaned_markdown
 
-    return (heading, raw, cleaned), show
+    return (heading, raw, cleaned), show, tabs
 
 
 def page_viewer_blocks(config: Config | None = None) -> gr.Blocks:
@@ -35,7 +36,7 @@ def page_viewer_blocks(config: Config | None = None) -> gr.Blocks:
     pages = sorted(p.name for p in config.htm_dir.glob("*.htm")) if config.htm_dir.is_dir() else []
     with gr.Blocks(title="Page viewer") as blocks:
         picker = gr.Dropdown(choices=pages, label="Manual Page", allow_custom_value=True)
-        outputs, show = build_page_viewer(config)
+        outputs, show, _ = build_page_viewer(config)
         picker.change(show, picker, list(outputs))
     return blocks
 
@@ -149,7 +150,7 @@ def keep_viewer_when_unselected(show):
 
 
 def chat_blocks(assistant, config: Config) -> gr.Blocks:
-    """Chat on the left, tabs (Page viewer, Debug) on the right."""
+    """Chat on the left, tabs (Markdown page, Manual page, Debug) on the right."""
     with gr.Blocks(title="Navigate Helper") as blocks:
         with gr.Row():
             with gr.Column(scale=2):
@@ -159,12 +160,10 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
                 gallery = gr.Gallery(label="Screenshots", columns=3, height=200)
                 box = gr.Textbox(placeholder="Stel een vraag", show_label=False, elem_id=QUESTION_ID, autofocus=True)
             with gr.Column(scale=3):
-                with gr.Tabs():
-                    with gr.Tab("Page viewer"):
-                        viewer_outputs, show = build_page_viewer(config)
-                    with gr.Tab("Debug"):
-                        table = gr.Dataframe(headers=DEBUG_HEADERS, interactive=False, wrap=True)
-                        notes = gr.Markdown()
+                viewer_outputs, show, tabs = build_page_viewer(config)
+                with tabs, gr.Tab("Debug"):
+                    table = gr.Dataframe(headers=DEBUG_HEADERS, interactive=False, wrap=True)
+                    notes = gr.Markdown()
         shown = gr.State([])  # the accumulated Page Links, as (title, page_file)
         box.submit(
             lambda message, history, shown: respond(assistant, config, message, history, shown),
