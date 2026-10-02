@@ -49,9 +49,13 @@ FOCUS_QUESTION_JS = (
 )
 
 CHAT_ID = "chat"
+LEFT_ID = "left"
 # Gradio puts a message's copy button below the message; this puts it to the right of the text, top-aligned.
 # (20px is the message row's own top margin.)
 CHAT_CSS = f"""
+/* The question box stays at the bottom left: the left column fills the window and the chat takes what is left. */
+#{LEFT_ID} {{ height: calc(100vh - 100px); min-height: 420px; }}
+#{CHAT_ID} {{ height: auto !important; flex: 1 1 0 !important; min-height: 200px; }}
 #{CHAT_ID} .message-wrap {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 4px; }}
 #{CHAT_ID} .message-wrap > .message-row {{ grid-column: 1; }}
 #{CHAT_ID} .message-wrap > .message-buttons {{ grid-column: 2; align-self: start; margin: 20px 0 0 0; width: auto; }}
@@ -170,8 +174,8 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
     """Chat on the left, tabs (Manual page, Markdown page, Debug) on the right."""
     with gr.Blocks(title="Navigate Helper") as blocks:
         with gr.Row():
-            with gr.Column(scale=2):
-                chat = gr.Chatbot(height=420, elem_id=CHAT_ID)
+            with gr.Column(scale=2, elem_id=LEFT_ID):
+                chat = gr.Chatbot(elem_id=CHAT_ID)
                 links = gr.Radio(label="Page Links (kies om te openen)", visible=False)
                 clear_links = gr.Button("Wis lijst", size="sm")
                 box = gr.Textbox(placeholder="Stel een vraag", show_label=False, elem_id=QUESTION_ID, autofocus=True)
