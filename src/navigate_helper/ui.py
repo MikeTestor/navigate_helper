@@ -101,23 +101,46 @@ def answer_view(answer: Answer, config: Config) -> AnswerView:
     return AnswerView(gallery, links, rows, "\n\n".join(notes))
 
 
-def respond(assistant, config: Config, message: str, history: list[dict]):
-    """One chat turn: returns (history, textbox, page link radio, gallery, debug rows, debug notes)."""
+NEW_MARK = "nieuw · "
+
+
+def merge_page_links(shown: list[tuple[str, str]], new: list[tuple[str, str]]):
+    """The accumulated Page Link list: this Answer's pages first (marked as new), earlier ones below.
+
+    Returns `(shown, choices)`; `shown` is the plain `(title, page_file)` list to keep, `choices` the radio choices.
+    A page that is already in the list moves up instead of appearing twice.
+    """
+    new = list(dict(((page_file, (title, page_file)) for title, page_file in new)).values())
+    new_files = {page_file for _, page_file in new}
+    merged = new + [item for item in shown if item[1] not in new_files]
+    choices = [((NEW_MARK if page_file in new_files else "") + title, page_file) for title, page_file in merged]
+    return merged, choices
+
+
+def respond(assistant, config: Config, message: str, history: list[dict], shown=()):
+    """One chat turn: returns (history, textbox, page link radio, gallery, debug rows, debug notes, shown links)."""
+    shown = list(shown)
     if not message.strip():
-        return history, message, gr.update(), gr.update(), gr.update(), gr.update()
+        return history, message, gr.update(), gr.update(), gr.update(), gr.update(), shown
     first_question = not history
     history = history + [{"role": "user", "content": message}]
     try:
         answer = assistant.ask(message)
     except Exception as error:  # retrieval and config errors raise from ask
         history.append({"role": "assistant", "content": f"Er ging iets mis: {type(error).__name__}: {error}"})
-        return history, "", gr.update(choices=[], value=None, visible=False), [], [], f"**error:** {error}"
+        return history, "", gr.update(), [], [], f"**error:** {error}", shown
     view = answer_view(answer, config)
     history.append({"role": "assistant", "content": answer.text})
-    # Only the first Answer preselects a page (which loads the viewer); later Answers leave the viewer alone.
-    preselected = view.page_link_choices[0][1] if first_question and view.page_link_choices else None
-    radio = gr.update(choices=view.page_link_choices, value=preselected, visible=bool(view.page_link_choices))
-    return history, "", radio, view.gallery, view.debug_rows, view.debug_notes
+    shown, choices = merge_page_links(shown, view.page_link_choices)
+    radio = {"choices": choices, "visible": bool(choices)}
+    if first_question and view.page_link_choices:
+        # Only the first Answer preselects a page (which loads the viewer); later Answers leave the viewer alone.
+        radio["value"] = view.page_link_choices[0][1]
+    return history, "", gr.update(**radio), view.gallery, view.debug_rows, view.debug_notes, shown
+
+
+def clear_page_links():
+    return gr.update(choices=[], value=None, visible=False), []
 
 
 def keep_viewer_when_unselected(show):
@@ -136,6 +159,7 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
             with gr.Column(scale=2):
                 chat = gr.Chatbot(height=420, elem_id=CHAT_ID)
                 links = gr.Radio(label="Page Links (kies om te openen)", visible=False)
+                clear_links = gr.Button("Wis lijst", size="sm")
                 gallery = gr.Gallery(label="Screenshots", columns=3, height=200)
                 box = gr.Textbox(placeholder="Stel een vraag", show_label=False, elem_id=QUESTION_ID, autofocus=True)
             with gr.Column(scale=3):
@@ -145,11 +169,13 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
                     with gr.Tab("Debug"):
                         table = gr.Dataframe(headers=DEBUG_HEADERS, interactive=False, wrap=True)
                         notes = gr.Markdown()
+        shown = gr.State([])  # the accumulated Page Links, as (title, page_file)
         box.submit(
-            lambda message, history: respond(assistant, config, message, history),
-            [box, chat],
-            [chat, box, links, gallery, table, notes],
+            lambda message, history, shown: respond(assistant, config, message, history, shown),
+            [box, chat, shown],
+            [chat, box, links, gallery, table, notes, shown],
         )
+        clear_links.click(clear_page_links, None, [links, shown])
         links.change(keep_viewer_when_unselected(show), links, list(viewer_outputs))
     return blocks
 

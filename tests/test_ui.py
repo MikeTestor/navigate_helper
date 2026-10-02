@@ -86,19 +86,46 @@ class FakeAssistant:
 
 def test_respond_appends_the_answer_to_the_chat(config):
     assistant = FakeAssistant(make_answer())
-    history, box, links, gallery, rows, notes = ui.respond(assistant, config, "vraag", [])
+    history, box, links, gallery, rows, notes, shown = ui.respond(assistant, config, "vraag", [])
     assert assistant.questions == ["vraag"] and box == ""
     assert history == [{"role": "user", "content": "vraag"}, {"role": "assistant", "content": "Het antwoord."}]
     assert len(gallery) == 2 and len(rows) == 3 and "Fout#9" in notes
-    assert links["choices"] == [("Partner", "Partner.htm")]
+    assert links["choices"] == [("nieuw · Partner", "Partner.htm")] and shown == [("Partner", "Partner.htm")]
+
+
+def test_new_pages_go_on_top_and_old_ones_are_kept():
+    shown, choices = ui.merge_page_links([("A", "a.htm"), ("B", "b.htm")], [("C", "c.htm"), ("B", "b.htm")])
+    assert shown == [("C", "c.htm"), ("B", "b.htm"), ("A", "a.htm")]
+    assert choices == [("nieuw · C", "c.htm"), ("nieuw · B", "b.htm"), ("A", "a.htm")]
+
+
+def test_a_later_answer_keeps_earlier_links_and_unmarks_them(config):
+    sources = [{"page_file": "Budgetten.htm", "page_title": "Budgetten"}]
+    history = [{"role": "user", "content": "eerder"}, {"role": "assistant", "content": "antwoord"}]
+    earlier = [("Acties", "Acties.htm")]
+    links = ui.respond(FakeAssistant(make_answer(source_pages=sources)), config, "vraag", history, earlier)[2]
+    assert links["choices"] == [
+        ("nieuw · Budgetten", "Budgetten.htm"), ("nieuw · Partner", "Partner.htm"), ("Acties", "Acties.htm")
+    ]
+
+
+def test_clear_empties_the_list():
+    radio, shown = ui.clear_page_links()
+    assert radio["choices"] == [] and radio["visible"] is False and shown == []
+
+
+def test_a_failed_question_keeps_the_list(config):
+    earlier = [("Acties", "Acties.htm")]
+    *_, shown = ui.respond(FakeAssistant(error=RuntimeError("x")), config, "vraag", [], earlier)
+    assert shown == earlier
 
 
 def test_later_answers_do_not_preselect_a_page(config):
     sources = [{"page_file": "Budgetten.htm", "page_title": "Budgetten"}]
     history = [{"role": "user", "content": "eerder"}, {"role": "assistant", "content": "antwoord"}]
     links = ui.respond(FakeAssistant(make_answer(source_pages=sources)), config, "vraag", history)[2]
-    assert links["value"] is None and links["visible"] is True
-    assert links["choices"][0] == ("Budgetten", "Budgetten.htm")
+    assert "value" not in links and links["visible"] is True
+    assert links["choices"][0] == ("nieuw · Budgetten", "Budgetten.htm")
 
 
 def test_clearing_the_radio_leaves_the_viewer_unchanged():
@@ -113,7 +140,7 @@ def test_respond_preselects_the_first_page_so_the_viewer_loads(config):
     links = ui.respond(FakeAssistant(make_answer(source_pages=sources)), config, "vraag", [])[2]
     assert links["value"] == "Budgetten.htm"
     none = ui.respond(FakeAssistant(make_answer(page_links=[])), config, "vraag", [])[2]
-    assert none["value"] is None and none["visible"] is False
+    assert "value" not in none and none["visible"] is False
 
 
 def test_respond_reports_retrieval_errors_in_the_chat(config):
