@@ -57,6 +57,7 @@ def page_viewer_blocks(config: Config | None = None) -> gr.Blocks:
 QUESTION_ID = "question"
 CHAT_ID = "chat"
 TABS_ID = "chat-tabs"
+LINKS_ID = "page-links"
 FOCUS_NOW_JS = "() => document.querySelector('#" + QUESTION_ID + " textarea')?.focus()"
 # Autofocus covers opening the app; this refocuses the question box when the browser tab is selected again.
 FOCUS_QUESTION_JS = (
@@ -85,13 +86,15 @@ CHAT_CSS = f"""
 #{CHAT_ID} .message-wrap > .message-row {{ grid-column: 1; }}
 #{CHAT_ID} .message-wrap > .message-buttons {{ grid-column: 2; align-self: start; justify-self: start; margin: 20px 0 0 0; width: auto; }}
 #{TABS_ID} {{ align-items: center; gap: 2px; flex-wrap: nowrap; overflow-x: auto; }}
-#{LEFT_ID} > .column {{ flex: 0 0 auto; }}  /* the box gr.render draws the tab strip in must not take the chat's space */
+#{LEFT_ID} > .column {{ flex: 0 0 auto !important; }}  /* the box gr.render draws the tab strip in must not take the chat's space */
 #{TABS_ID} button {{ flex: 0 0 auto; white-space: nowrap; }}
 #{TABS_ID} .chat-tab {{ gap: 0; flex: 0 0 auto; width: fit-content; min-width: 0; border-bottom: 2px solid transparent; }}
 #{TABS_ID} .chat-tab.selected {{ border-bottom-color: var(--color-accent); }}
 #{TABS_ID} .chat-tab.selected .chat-tab-title {{ font-weight: 600; }}
 #{TABS_ID} .chat-tab-title, #{TABS_ID} .chat-tab-close {{ background: transparent; border: none; box-shadow: none; }}
 #{TABS_ID} .chat-tab-close {{ padding: 0 6px; opacity: 0.6; }}
+/* Page Links: at most three rows, then a scroll bar (a row is a 35px label, rows are 8px apart). */
+#{LINKS_ID} > .wrap:not(.default) {{ max-height: calc(3 * 35px + 2 * 8px); overflow-y: auto; }}
 #{CHAT_ID} .message-buttons .icon-button-wrapper {{ margin: 0; }}  /* same size for user and assistant messages */
 """
 
@@ -320,7 +323,7 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
                             [chats, revision], [chats, active, *view, revision],
                         ).then(**focus)
                 chat = gr.Chatbot(elem_id=CHAT_ID, autoscroll=False)
-                links = gr.Radio(label="Page Links (kies om te openen)", visible=False)
+                links = gr.Radio(label="Page Links (kies om te openen)", visible=False, elem_id=LINKS_ID)
                 clear_links = gr.Button("Wis lijst", size="sm")
                 box = gr.Textbox(placeholder="Stel een vraag", show_label=False, elem_id=QUESTION_ID, autofocus=True)
             with gr.Column(scale=3):

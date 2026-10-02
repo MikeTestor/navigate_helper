@@ -293,6 +293,7 @@ def test_run_builds_the_assistant_once_and_serves_raw(monkeypatch, config):
     assert f"#{ui.CHAT_ID} .message-buttons .icon-button-wrapper {{ margin: 0; }}" in launched["css"]  # equal sizes
     assert f"#{ui.LEFT_ID} {{ height: calc(100vh" in launched["css"]  # question box pinned to the bottom left
     assert f"#{ui.TABS_ID} .chat-tab.selected" in launched["css"]  # the active tab is marked
-    assert f"#{ui.LEFT_ID} > .column {{ flex: 0 0 auto; }}" in launched["css"]  # the tab strip leaves the chat its height
+    assert f"#{ui.LEFT_ID} > .column {{ flex: 0 0 auto !important; }}" in launched["css"]
+    assert f"#{ui.LINKS_ID} > .wrap:not(.default) {{ max-height: calc(3 * 35px" in launched["css"]  # three rows, then scroll  # the tab strip leaves the chat its height
     # refocuses the question box when the browser tab is selected again
     assert ui.QUESTION_ID in launched["js"] and "addEventListener('focus'" in launched["js"]
