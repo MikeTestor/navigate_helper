@@ -34,7 +34,7 @@ def iframe_doc(view):
 
 def test_iframe_fills_the_window_height(config):
     view = page_viewer("with_files.htm", config)
-    assert "height:calc(100vh - 320px)" in view.raw_html and "min-height:300px" in view.raw_html
+    assert "height:calc(100vh - 216px)" in view.raw_html and "min-height:300px" in view.raw_html
 
 
 def test_iframe_is_sandboxed_without_scripts(config):

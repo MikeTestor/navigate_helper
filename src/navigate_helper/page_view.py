@@ -17,7 +17,7 @@ from navigate_helper.clean import collapse
 from navigate_helper.config import Config, load_config
 
 FILE_URL_PREFIX = "/gradio_api/file="
-IFRAME_HEIGHT = "calc(100vh - 320px)"  # fills the window below the heading and tabs; see also IFRAME_MIN_HEIGHT
+IFRAME_HEIGHT = "calc(100vh - 216px)"  # bottom edge level with the question box: 100px for the left column, 116px for the heading and tabs above the page
 IFRAME_MIN_HEIGHT = "300px"
 
 _EXTERNAL = re.compile(r"^(https?:|mailto:|data:|//)", re.IGNORECASE)
