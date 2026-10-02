@@ -101,20 +101,14 @@ def answer_view(answer: Answer, config: Config) -> AnswerView:
     return AnswerView(gallery, links, rows, "\n\n".join(notes))
 
 
-NEW_MARK = "nieuw · "
+def merge_page_links(shown: list[tuple[str, str]], new: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """The accumulated Page Link list as `(title, page_file)`: this Answer's pages first, earlier ones below.
 
-
-def merge_page_links(shown: list[tuple[str, str]], new: list[tuple[str, str]]):
-    """The accumulated Page Link list: this Answer's pages first (marked as new), earlier ones below.
-
-    Returns `(shown, choices)`; `shown` is the plain `(title, page_file)` list to keep, `choices` the radio choices.
     A page that is already in the list moves up instead of appearing twice.
     """
-    new = list(dict(((page_file, (title, page_file)) for title, page_file in new)).values())
+    new = list(dict((page_file, (title, page_file)) for title, page_file in new).values())
     new_files = {page_file for _, page_file in new}
-    merged = new + [item for item in shown if item[1] not in new_files]
-    choices = [((NEW_MARK if page_file in new_files else "") + title, page_file) for title, page_file in merged]
-    return merged, choices
+    return new + [item for item in shown if item[1] not in new_files]
 
 
 def respond(assistant, config: Config, message: str, history: list[dict], shown=()):
@@ -131,8 +125,8 @@ def respond(assistant, config: Config, message: str, history: list[dict], shown=
         return history, "", gr.update(), [], [], f"**error:** {error}", shown
     view = answer_view(answer, config)
     history.append({"role": "assistant", "content": answer.text})
-    shown, choices = merge_page_links(shown, view.page_link_choices)
-    radio = {"choices": choices, "visible": bool(choices)}
+    shown = merge_page_links(shown, view.page_link_choices)
+    radio = {"choices": shown, "visible": bool(shown)}
     if first_question and view.page_link_choices:
         # Only the first Answer preselects a page (which loads the viewer); later Answers leave the viewer alone.
         radio["value"] = view.page_link_choices[0][1]
