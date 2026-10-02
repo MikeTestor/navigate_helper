@@ -158,6 +158,8 @@ def test_chat_blocks_build_with_a_fake_assistant(config):
     assert isinstance(blocks, gr.Blocks)
     labels = {getattr(b, "label", None) for b in blocks.blocks.values()}
     assert {"Page viewer", "Debug"} <= labels
+    tabs = [b.label for b in blocks.blocks.values() if isinstance(b, gr.Tab)]
+    assert tabs == ["Page viewer", "Manual Page", "Cleaned Page", "Debug"]
 
 
 def test_question_box_is_focused_on_open(config):

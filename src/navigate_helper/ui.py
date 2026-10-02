@@ -16,9 +16,11 @@ def build_page_viewer(config: Config | None = None):
     `show(page_file)` loads the viewer; the chat app calls it when a Page Link is chosen.
     """
     heading = gr.HTML()
-    with gr.Row():
-        raw = gr.HTML(label="Manual Page")
-        cleaned = gr.Markdown(label="Cleaned Page")
+    with gr.Tabs():  # sub-tabs rather than columns: each gets the full width of the narrow right-hand side
+        with gr.Tab("Manual Page"):
+            raw = gr.HTML()
+        with gr.Tab("Cleaned Page"):
+            cleaned = gr.Markdown()
 
     def show(page_file: str | None):
         view = page_viewer(page_file, config)
