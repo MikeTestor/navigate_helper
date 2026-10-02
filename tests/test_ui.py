@@ -42,6 +42,18 @@ def test_gallery_is_deduplicated_captioned_and_skips_missing_files(config):
     assert all(path.endswith(("a.png", "b.png")) for path, _ in view.gallery)
 
 
+def test_no_screenshots_means_an_empty_large_view(config):
+    answer = make_answer(cited=[chunk("Budgetten#1", cited=True)])
+    large = ui.respond(FakeAssistant(answer), config, "vraag", [])[4]
+    assert large["value"] is None
+
+
+def test_selecting_a_thumbnail_shows_it_large():
+    event = type("Event", (), {"value": {"image": {"path": "x/b.png"}, "caption": "Budgetten / b.png"}})()
+    large = ui.select_screenshot(event)
+    assert large["value"] == "x/b.png" and large["label"] == "Budgetten / b.png"
+
+
 def test_page_links_become_radio_choices(config):
     assert ui.answer_view(make_answer(), config).page_link_choices == [("Partner", "Partner.htm")]
 
@@ -86,9 +98,10 @@ class FakeAssistant:
 
 def test_respond_appends_the_answer_to_the_chat(config):
     assistant = FakeAssistant(make_answer())
-    history, box, links, gallery, rows, notes, shown = ui.respond(assistant, config, "vraag", [])
+    history, box, links, gallery, large, rows, notes, shown = ui.respond(assistant, config, "vraag", [])
     assert assistant.questions == ["vraag"] and box == ""
     assert history == [{"role": "user", "content": "vraag"}, {"role": "assistant", "content": "Het antwoord."}]
+    assert large["value"] == gallery[0][0] and large["label"] == "Budgetten / a.png"  # starts on the first screenshot
     assert len(gallery) == 2 and len(rows) == 3 and "Fout#9" in notes
     assert links["choices"] == [("Partner", "Partner.htm")] and shown == [("Partner", "Partner.htm")]
 
@@ -157,7 +170,7 @@ def test_chat_blocks_build_with_a_fake_assistant(config):
     blocks = ui.chat_blocks(FakeAssistant(make_answer()), config)
     assert isinstance(blocks, gr.Blocks)
     tabs = [b.label for b in blocks.blocks.values() if isinstance(b, gr.Tab)]
-    assert tabs == ["Manual page", "Markdown page", "Debug"]
+    assert tabs == ["Manual page", "Markdown page", "Debug", "Screenshots"]
     assert len({b.parent for b in blocks.blocks.values() if isinstance(b, gr.Tab)}) == 1  # one row of tabs
 
 
