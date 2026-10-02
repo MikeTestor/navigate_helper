@@ -233,6 +233,16 @@ def new_chat(chats: list[Conversation]):
     return (chats, chat_tabs(chats, active), *chat_view(chats[active]))
 
 
+def close_chat(chats: list[Conversation], active: int):
+    """The × button: remove the active conversation. The next one takes its place; the last one is never left empty."""
+    chats = list(chats)
+    del chats[active]
+    if not chats:
+        chats = [Conversation()]
+    active = min(active, len(chats) - 1)
+    return (chats, chat_tabs(chats, active), *chat_view(chats[active]))
+
+
 def switch_chat(chats: list[Conversation], active: int):
     return chat_view(chats[active])
 
@@ -274,6 +284,7 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
                         choices=[("Chat 1", 0)], value=0, show_label=False, container=False, scale=0, min_width=0,
                     )
                     plus = gr.Button("+", size="sm", scale=0, min_width=44)
+                    close = gr.Button("×", size="sm", scale=0, min_width=44)
                 chat = gr.Chatbot(elem_id=CHAT_ID, autoscroll=False)
                 links = gr.Radio(label="Page Links (kies om te openen)", visible=False)
                 clear_links = gr.Button("Wis lijst", size="sm")
@@ -297,6 +308,7 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
             [chat, box, links, gallery, large, table, notes, chats, tab_strip],
         ).then(None, None, None, js=SCROLL_TO_QUESTION_JS)
         plus.click(new_chat, chats, [chats, tab_strip, *view]).then(None, None, None, js=FOCUS_NOW_JS)
+        close.click(close_chat, [chats, tab_strip], [chats, tab_strip, *view]).then(None, None, None, js=FOCUS_NOW_JS)
         tab_strip.input(switch_chat, [chats, tab_strip], view).then(None, None, None, js=FOCUS_NOW_JS)
         gallery.select(select_screenshot, None, large)
         clear_links.click(clear_page_links, [chats, tab_strip], [links, chats])

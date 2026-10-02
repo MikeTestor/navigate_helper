@@ -141,6 +141,28 @@ def test_a_new_chat_is_added_and_selected_with_empty_views():
     assert history == [] and links["visible"] is False and gallery == [] and large["value"] is None and rows == []
 
 
+def make_chats(*titles):
+    return [ui.Conversation(title=t, history=[{"role": "user", "content": t}]) for t in titles]
+
+
+def test_closing_a_chat_removes_it_and_the_next_one_takes_its_place():
+    chats, tabs, history, *_ = ui.close_chat(make_chats("a", "b", "c"), 1)
+    assert [c.title for c in chats] == ["a", "c"]
+    assert tabs["value"] == 1 and history == [{"role": "user", "content": "c"}]
+
+
+def test_closing_the_last_tab_selects_the_one_before():
+    chats, tabs, history, *_ = ui.close_chat(make_chats("a", "b"), 1)
+    assert [c.title for c in chats] == ["a"] and tabs["value"] == 0
+    assert history == [{"role": "user", "content": "a"}]
+
+
+def test_closing_the_only_chat_leaves_one_empty_chat():
+    chats, tabs, history, links, gallery, large, rows, notes = ui.close_chat(make_chats("a"), 0)
+    assert len(chats) == 1 and chats[0].title == "" and history == []
+    assert tabs["choices"] == [("Chat 1", 0)] and links["visible"] is False
+
+
 def test_the_first_question_names_the_tab_and_long_names_are_cut(config):
     chats = [ui.Conversation()]
     *_, chats, tabs = ui.submit(FakeAssistant(make_answer()), config, "kort", chats, 0)
@@ -237,6 +259,7 @@ def test_markdown_tab_has_a_copy_button_that_copies_the_source(config):
 def test_chat_blocks_have_a_tab_strip_and_a_plus_button(config):
     blocks = ui.chat_blocks(FakeAssistant(make_answer()), config)
     assert any(isinstance(b, gr.Button) and b.value == "+" for b in blocks.blocks.values())
+    assert any(isinstance(b, gr.Button) and b.value == "×" for b in blocks.blocks.values())
     strip = next(b for b in blocks.blocks.values() if isinstance(b, gr.Radio) and b.value == 0)
     assert strip.choices == [("Chat 1", 0)]
 
