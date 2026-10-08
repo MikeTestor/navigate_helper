@@ -92,7 +92,7 @@ Sources: [Gradio dev app](https://github.com/MikeTestor/navigate_helper/issues/1
 
 - **Layout**: `gr.Blocks`; chat on the left; tabs on the right: **Page viewer** and **Debug**.
 - **Page Links**: a radio list under each Answer; choosing one loads the Page viewer. No inline links and no custom JavaScript.
-- **Page viewer**: the raw Manual Page (scripts stripped, image `src` rewritten to `/gradio_api/file=` URLs, `srcdoc` iframe with `sandbox="allow-same-origin"` and no `allow-scripts`) next to the rendered Cleaned Page. A heading shows the page title and an **open full page** link.
+- **Page viewer**: the raw Manual Page (scripts stripped, image `src` rewritten to `/gradio_api/file=` URLs, relative links such as Page Links unwrapped to plain text because they cannot resolve inside the iframe, `srcdoc` iframe with `sandbox="allow-same-origin"` and no `allow-scripts`) next to the rendered Cleaned Page. A heading shows the page title and an **open full page** link.
 - **Image resolution**: pages and images are read from the project's `raw/` (`allowed_paths` covers it), not the shared drive. Bare filename → `raw/images/`, `images/x` → `raw/`, `<Page>_files/x` → `raw/htm_docs/`. **Open full page** serves a rewritten copy of the page (scripts stripped, image URLs rewritten) in a new tab. No file-system path is shown.
 - **Screenshots**: a `gr.Gallery` under the Answer, deduplicated, captioned with page and file name.
 - **Debug tab**: a table of Retrieved Chunks: `chunk_id`, page title, heading path, score, cited (yes/blank), the Chunk text; plus dropped citations and the `error` / uncited flags.
