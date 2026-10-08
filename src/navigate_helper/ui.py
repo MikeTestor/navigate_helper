@@ -1,13 +1,17 @@
 """The ui stage: the Gradio dev app. It knows only `Answer`; the rules are in docs/design-decisions.md,
 section "Stages 4 and 5 – Gradio dev app"."""
 
+import os
 from dataclasses import dataclass, field
 
 import gradio as gr
+import uvicorn
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 
 from navigate_helper.ask import Answer, build_assistant
 from navigate_helper.config import Config, load_config
-from navigate_helper.page_view import page_viewer, resolve_image, view_dir
+from navigate_helper.page_view import FULL_PAGE_PREFIX, page_viewer, resolve_image, served_page
 
 
 JUMP_ID = "page-jump"
@@ -373,13 +377,31 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
     return blocks
 
 
+def manual_app(config: Config) -> FastAPI:
+    """The route behind **open full page**: a Manual Page at `/manual/<Page>.htm`, so its links to other pages work."""
+    app = FastAPI()
+
+    @app.get(FULL_PAGE_PREFIX + "{name}")
+    def manual_page(name: str):
+        page = served_page(name, config)
+        if page is None:
+            raise HTTPException(status_code=404, detail="Pagina niet gevonden")
+        return HTMLResponse(page, headers={"Content-Security-Policy": "script-src 'none'"})
+
+    return app
+
+
+def serve(blocks: gr.Blocks, config: Config, **launch_args) -> None:
+    """Run `blocks` plus the full-page route on one port (GRADIO_SERVER_PORT, default 7860)."""
+    app = gr.mount_gradio_app(manual_app(config), blocks, path="/", allowed_paths=[str(config.raw_dir.resolve())], **launch_args)
+    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("GRADIO_SERVER_PORT", "7860")))
+
+
 def run(config: Config) -> None:
     assistant = build_assistant(config)  # once, at startup (slow: loads the e5 model)
-    chat_blocks(assistant, config).launch(
-        allowed_paths=[str(config.raw_dir.resolve()), str(view_dir())], js=APP_JS, css=CHAT_CSS
-    )
+    serve(chat_blocks(assistant, config), config, js=APP_JS, css=CHAT_CSS)
 
 
 if __name__ == "__main__":
     _config = load_config()
-    page_viewer_blocks(_config).launch(allowed_paths=[str(_config.raw_dir.resolve()), str(view_dir())], js=PAGE_JUMP_JS)
+    serve(page_viewer_blocks(_config), _config, js=PAGE_JUMP_JS)

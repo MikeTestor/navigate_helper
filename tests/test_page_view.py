@@ -83,21 +83,36 @@ def test_links_to_other_manual_pages_become_plain_text(config):
 
 def test_links_to_existing_manual_pages_carry_data_page_in_the_viewer_only(config):
     html = '<a href="tables.htm#a">een</a> <a href="no%5Fsections.htm">twee</a> <a href="missing.htm">drie</a> <a href="x/tables.htm">vier</a>'
-    shown = page_view.rewrite_page(html, config.raw_dir, page_links=True)
+    shown = page_view.rewrite_page(html, config.raw_dir, links="viewer")
     assert 'data-page="tables.htm"' in shown and 'data-page="no_sections.htm"' in shown
     assert shown.count("data-page") == 2 and "missing.htm" not in shown and "x/tables.htm" not in shown
     plain = page_view.rewrite_page(html, config.raw_dir)
     assert "data-page" not in plain and ".htm" not in plain
 
 
-def test_viewer_iframe_links_pages_but_full_page_copy_does_not(config):
-    tables = config.htm_dir / "tables.htm"
-    assert "no_sections.htm" in tables.read_text(encoding="utf-8-sig")
-    view = page_viewer("tables.htm", config)
-    assert 'data-page="no_sections.htm"' in iframe_doc(view)
-    href = unescape(view.heading.split('href="')[1].split('"')[0])
-    copy = next(c for c in page_view.view_dir().glob("*.html") if page_view.file_url(c) == href)
-    assert "data-page" not in copy.read_text(encoding="utf-8")
+def test_viewer_iframe_links_pages_but_the_full_page_is_served_with_real_links(config):
+    assert "no_sections.htm" in (config.htm_dir / "tables.htm").read_text(encoding="utf-8-sig")
+    assert 'data-page="no_sections.htm"' in iframe_doc(page_viewer("tables.htm", config))
+    served = page_view.served_page("tables.htm", config)
+    assert 'href="no_sections.htm#a"' in served and "data-page" not in served and "<script" not in served
+
+
+def test_served_page_keeps_links_to_existing_pages_quoted_and_drops_the_rest(config):
+    html = '<a href="no%5Fsections.htm">een</a> <a href="missing.htm">twee</a> <a href="#deel">drie</a>'
+    out = page_view.rewrite_page(html, config.raw_dir, links="served")
+    assert 'href="no_sections.htm"' in out and "missing.htm" not in out and 'href="#deel"' in out
+    assert "</a> twee <a" in out  # the missing page's link is plain text
+
+
+def test_served_page_only_for_real_manual_pages(config):
+    assert page_view.served_page("with_files.htm", config) is not None
+    for name in ("missing.htm", "../with_files.htm", "sub/with_files.htm", "with_files.txt", ""):
+        assert page_view.served_page(name, config) is None
+
+
+def test_served_page_has_rewritten_image_urls(config):
+    served = page_view.served_page("with_files.htm", config)
+    assert f'src="/gradio_api/file={config.raw_dir.resolve().as_posix()}/images/shot.gif"' in served
 
 
 def test_anchor_links_stay_inside_the_iframe_document(config):
@@ -105,11 +120,6 @@ def test_anchor_links_stay_inside_the_iframe_document(config):
     doc = iframe_doc(page_view.PageView("", page_view.raw_iframe(page_view.rewrite_page(html, config.raw_dir)), ""))
     assert 'href="about:srcdoc#deel"' in doc  # a bare #deel would load the app's own URL in the frame
     assert 'name="deel"' in doc
-
-
-def test_full_page_copy_keeps_plain_anchor_links(config):
-    out = page_view.rewrite_page('<a href="#deel">x</a>', config.raw_dir)
-    assert 'href="#deel"' in out
 
 
 def test_heading_has_title_and_open_full_page_link_without_a_path(config):
@@ -120,12 +130,10 @@ def test_heading_has_title_and_open_full_page_link_without_a_path(config):
     assert str(config.data_dir) not in visible and "/gradio_api" not in visible
 
 
-def test_full_page_copy_is_rewritten_and_written_under_view_dir(config):
+def test_open_full_page_points_at_the_served_page(config):
     view = page_viewer("with_files.htm", config)
     href = unescape(view.heading.split('href="')[1].split('"')[0])
-    assert href.startswith(page_view.FILE_URL_PREFIX)
-    copies = list(page_view.view_dir().glob("*.html"))
-    assert any("/gradio_api/file=" in c.read_text(encoding="utf-8") and "<script" not in c.read_text(encoding="utf-8") for c in copies)
+    assert href == "/manual/with_files.htm"
 
 
 def test_cleaned_page_renders_beside_without_front_matter_or_page_link_targets(config):

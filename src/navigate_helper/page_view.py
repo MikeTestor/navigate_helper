@@ -3,10 +3,8 @@
 The rules are in docs/design-decisions.md, section "Stages 4 and 5 – Gradio dev app". Nothing here imports Gradio.
 """
 
-import hashlib
 import html
 import re
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote, unquote
@@ -17,6 +15,7 @@ from navigate_helper.clean import collapse
 from navigate_helper.config import Config, load_config
 
 FILE_URL_PREFIX = "/gradio_api/file="
+FULL_PAGE_PREFIX = "/manual/"  # where `ui.manual_app` serves a Manual Page for **open full page**
 IFRAME_HEIGHT = "calc(100vh - 216px)"  # bottom edge level with the question box: 100px for the left column, 116px for the heading and tabs above the page
 IFRAME_MIN_HEIGHT = "300px"
 
@@ -24,7 +23,6 @@ _EXTERNAL = re.compile(r"^(https?:|mailto:|data:|//)", re.IGNORECASE)
 _FRONT_MATTER = re.compile(r"\A---\n.*?\n---\n\n?", re.DOTALL)
 _MD_IMAGE = re.compile(r"!\[\]\(([^)]*)\)")
 _MD_PAGE_LINK = re.compile(r"(?<!!)\[([^\]]*)\]\(<[^>]*>\)")
-_view_dir: Path | None = None
 # Runs inside the iframe; a click on a link to another Manual Page asks the app to load that page in the viewer.
 IFRAME_LINK_SCRIPT = (
     "<script>document.addEventListener('click', function (e) {"
@@ -77,10 +75,12 @@ def linked_page(href: str, raw_dir: Path) -> str | None:
     return name if (raw_dir / "htm_docs" / name).is_file() else None
 
 
-def rewrite_page(raw_html: str, raw_dir: Path, page_links: bool = False) -> str:
+def rewrite_page(raw_html: str, raw_dir: Path, links: str = "plain") -> str:
     """A Manual Page that is safe to show: scripts stripped, image `src` pointing at file URLs, relative links as plain text.
 
-    With `page_links`, links to other Manual Pages stay links, carrying `data-page` for the iframe script.
+    `links` says what happens to a link to another Manual Page that exists: "plain" (plain text), "viewer" (kept with
+    `data-page` for the iframe script) or "served" (kept as a relative link, for the page served at `FULL_PAGE_PREFIX`).
+    Links to pages that do not exist are always plain text.
     """
     soup = BeautifulSoup(raw_html, "html.parser")
     for tag in soup.find_all(["script", "iframe", "object", "embed"]):
@@ -95,12 +95,15 @@ def rewrite_page(raw_html: str, raw_dir: Path, page_links: bool = False) -> str:
         href = link["href"].strip()
         if href.startswith("#") or _EXTERNAL.match(href):
             continue
-        page = linked_page(href, raw_dir) if page_links else None
-        if page:
+        page = linked_page(href, raw_dir) if links != "plain" else None
+        if page and links == "viewer":
             link["data-page"] = page
             link["href"] = "#"
+        elif page:
+            anchor = href.partition("#")[2]
+            link["href"] = quote(page) + ("#" + anchor if anchor else "")
         else:
-            link.unwrap()  # a relative link cannot resolve inside the srcdoc iframe or the full-page copy
+            link.unwrap()  # a relative link cannot resolve inside the srcdoc iframe
     for img in soup.find_all("img"):
         path = resolve_image(img.get("src") or "", raw_dir)
         if path is not None:
@@ -133,19 +136,14 @@ def raw_iframe(rewritten: str, height: str = IFRAME_HEIGHT) -> str:
     )
 
 
-def view_dir() -> Path:
-    """Where rewritten copies for **open full page** are written; add it to Gradio's `allowed_paths`."""
-    global _view_dir
-    if _view_dir is None:
-        _view_dir = Path(tempfile.mkdtemp(prefix="navigate_helper_view_"))
-    return _view_dir
-
-
-def _full_page_url(page_file: str, rewritten: str) -> str:
-    digest = hashlib.sha256(page_file.encode("utf-8")).hexdigest()[:16]
-    out = view_dir() / f"{digest}.html"
-    out.write_text(rewritten, encoding="utf-8", newline="\n")
-    return file_url(out)
+def served_page(name: str, config: Config) -> str | None:
+    """A Manual Page ready to serve at `FULL_PAGE_PREFIX + name` (scripts stripped, image URLs and links rewritten), or None."""
+    if not name or Path(name).name != name or not name.lower().endswith((".htm", ".html")):
+        return None
+    path = config.htm_dir / name
+    if not path.is_file():
+        return None
+    return rewrite_page(path.read_text(encoding="utf-8-sig", errors="replace"), config.raw_dir, links="served")
 
 
 def _message(text: str) -> PageView:
@@ -170,14 +168,13 @@ def page_viewer(page_file: str | None, config: Config | None = None) -> PageView
 
     raw_dir = config.raw_dir
     raw = path.read_text(encoding="utf-8-sig", errors="replace")
-    rewritten = rewrite_page(raw, raw_dir)
-    in_viewer = rewrite_page(raw, raw_dir, page_links=True)
+    in_viewer = rewrite_page(raw, raw_dir, links="viewer")
     soup = BeautifulSoup(raw, "html.parser")
     stem = path.stem
     title = collapse(soup.title.get_text()) if soup.title else ""
     title = title or stem
 
-    link = f'<a href="{html.escape(_full_page_url(name, rewritten))}" target="_blank" rel="noopener">open full page</a>'
+    link = f'<a href="{html.escape(FULL_PAGE_PREFIX + quote(name))}" target="_blank" rel="noopener">open full page</a>'
     heading = f"<h3>{html.escape(title)} · {link}</h3>"
 
     cleaned_path = config.cleaned_dir / f"{stem}.md"
