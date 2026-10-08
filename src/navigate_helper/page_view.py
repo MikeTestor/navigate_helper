@@ -25,6 +25,12 @@ _FRONT_MATTER = re.compile(r"\A---\n.*?\n---\n\n?", re.DOTALL)
 _MD_IMAGE = re.compile(r"!\[\]\(([^)]*)\)")
 _MD_PAGE_LINK = re.compile(r"(?<!!)\[([^\]]*)\]\(<[^>]*>\)")
 _view_dir: Path | None = None
+# Runs inside the iframe; a click on a link to another Manual Page asks the app to load that page in the viewer.
+IFRAME_LINK_SCRIPT = (
+    "<script>document.addEventListener('click', function (e) {"
+    " var a = e.target.closest && e.target.closest('a[data-page]'); if (!a) return;"
+    " e.preventDefault(); parent.postMessage({navigateHelperPage: a.getAttribute('data-page')}, '*'); });</script>"
+)
 
 
 @dataclass(frozen=True)
@@ -63,8 +69,19 @@ def resolve_image(src: str, raw_dir: Path) -> Path | None:
     return path if path.is_file() and path.is_relative_to(raw_dir.resolve()) else None
 
 
-def rewrite_page(raw_html: str, raw_dir: Path) -> str:
-    """A Manual Page that is safe to show: scripts stripped, image `src` pointing at file URLs, relative links as plain text."""
+def linked_page(href: str, raw_dir: Path) -> str | None:
+    """The Manual Page file a relative link points at (without `#anchor`), or None when there is no such page."""
+    name = unquote(href.strip().split("#")[0]).replace("\\", "/")
+    if not name.lower().endswith((".htm", ".html")) or _EXTERNAL.match(name) or "/" in name:
+        return None
+    return name if (raw_dir / "htm_docs" / name).is_file() else None
+
+
+def rewrite_page(raw_html: str, raw_dir: Path, page_links: bool = False) -> str:
+    """A Manual Page that is safe to show: scripts stripped, image `src` pointing at file URLs, relative links as plain text.
+
+    With `page_links`, links to other Manual Pages stay links, carrying `data-page` for the iframe script.
+    """
     soup = BeautifulSoup(raw_html, "html.parser")
     for tag in soup.find_all(["script", "iframe", "object", "embed"]):
         tag.decompose()
@@ -76,7 +93,13 @@ def rewrite_page(raw_html: str, raw_dir: Path) -> str:
                 del tag[attr]
     for link in soup.find_all("a", href=True):
         href = link["href"].strip()
-        if not href.startswith("#") and not _EXTERNAL.match(href):
+        if href.startswith("#") or _EXTERNAL.match(href):
+            continue
+        page = linked_page(href, raw_dir) if page_links else None
+        if page:
+            link["data-page"] = page
+            link["href"] = "#"
+        else:
             link.unwrap()  # a relative link cannot resolve inside the srcdoc iframe or the full-page copy
     for img in soup.find_all("img"):
         path = resolve_image(img.get("src") or "", raw_dir)
@@ -102,8 +125,10 @@ def raw_iframe(rewritten: str, height: str = IFRAME_HEIGHT) -> str:
     for link in soup.find_all("a", href=True):
         if link["href"].startswith("#"):
             link["href"] = "about:srcdoc" + link["href"]
+    # allow-scripts is for IFRAME_LINK_SCRIPT only: the page's own scripts are stripped by `rewrite_page`.
+    document = str(soup) + IFRAME_LINK_SCRIPT
     return (
-        f'<iframe sandbox="allow-same-origin" srcdoc="{html.escape(str(soup))}" '
+        f'<iframe sandbox="allow-same-origin allow-scripts" srcdoc="{html.escape(document)}" '
         f'style="width:100%;height:{height};min-height:{IFRAME_MIN_HEIGHT};border:1px solid #ccc"></iframe>'
     )
 
@@ -146,6 +171,7 @@ def page_viewer(page_file: str | None, config: Config | None = None) -> PageView
     raw_dir = config.raw_dir
     raw = path.read_text(encoding="utf-8-sig", errors="replace")
     rewritten = rewrite_page(raw, raw_dir)
+    in_viewer = rewrite_page(raw, raw_dir, page_links=True)
     soup = BeautifulSoup(raw, "html.parser")
     stem = path.stem
     title = collapse(soup.title.get_text()) if soup.title else ""
@@ -161,4 +187,4 @@ def page_viewer(page_file: str | None, config: Config | None = None) -> PageView
         cleaned = rewrite_cleaned(source, raw_dir)
     else:
         cleaned = "*Geen Cleaned Page beschikbaar voor deze pagina (draai eerst `clean`).*"
-    return PageView(heading, raw_iframe(rewritten), cleaned, source)
+    return PageView(heading, raw_iframe(in_viewer), cleaned, source)

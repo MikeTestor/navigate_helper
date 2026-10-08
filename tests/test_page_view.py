@@ -37,11 +37,12 @@ def test_iframe_fills_the_window_height(config):
     assert "height:calc(100vh - 216px)" in view.raw_html and "min-height:300px" in view.raw_html
 
 
-def test_iframe_is_sandboxed_without_scripts(config):
+def test_iframe_runs_only_our_link_script_not_the_pages_scripts(config):
     view = page_viewer("with_files.htm", config)
-    assert 'sandbox="allow-same-origin"' in view.raw_html and "allow-scripts" not in view.raw_html
+    assert 'sandbox="allow-same-origin allow-scripts"' in view.raw_html
     doc = iframe_doc(view)
-    assert "<script" not in doc and "RH_Document_Write" not in doc
+    assert "RH_Document_Write" not in doc and "whver.js" not in doc
+    assert doc.count("<script") == 1 and "navigateHelperPage" in doc
 
 
 def test_image_forms_resolve_to_raw(config):
@@ -78,6 +79,25 @@ def test_links_to_other_manual_pages_become_plain_text(config):
     assert ".htm" not in out and "<a>" not in out
     assert "een twee drie" in out
     assert 'href="https://example.nl/a"' in out and 'href="mailto:a@b.nl"' in out and 'href="#boven"' in out
+
+
+def test_links_to_existing_manual_pages_carry_data_page_in_the_viewer_only(config):
+    html = '<a href="tables.htm#a">een</a> <a href="no%5Fsections.htm">twee</a> <a href="missing.htm">drie</a> <a href="x/tables.htm">vier</a>'
+    shown = page_view.rewrite_page(html, config.raw_dir, page_links=True)
+    assert 'data-page="tables.htm"' in shown and 'data-page="no_sections.htm"' in shown
+    assert shown.count("data-page") == 2 and "missing.htm" not in shown and "x/tables.htm" not in shown
+    plain = page_view.rewrite_page(html, config.raw_dir)
+    assert "data-page" not in plain and ".htm" not in plain
+
+
+def test_viewer_iframe_links_pages_but_full_page_copy_does_not(config):
+    tables = config.htm_dir / "tables.htm"
+    assert "no_sections.htm" in tables.read_text(encoding="utf-8-sig")
+    view = page_viewer("tables.htm", config)
+    assert 'data-page="no_sections.htm"' in iframe_doc(view)
+    href = unescape(view.heading.split('href="')[1].split('"')[0])
+    copy = next(c for c in page_view.view_dir().glob("*.html") if page_view.file_url(c) == href)
+    assert "data-page" not in copy.read_text(encoding="utf-8")
 
 
 def test_anchor_links_stay_inside_the_iframe_document(config):
