@@ -392,9 +392,12 @@ def manual_app(config: Config) -> FastAPI:
 
 
 def serve(blocks: gr.Blocks, config: Config, **launch_args) -> None:
-    """Run `blocks` plus the full-page route on one port (GRADIO_SERVER_PORT, default 7860)."""
+    """Run `blocks` plus the full-page route on one port (GRADIO_SERVER_PORT, default 7860).
+
+    Listens on 127.0.0.1 (this machine only) unless GRADIO_SERVER_NAME says otherwise, e.g. 0.0.0.0 for the company network.
+    """
     app = gr.mount_gradio_app(manual_app(config), blocks, path="/", allowed_paths=[str(config.raw_dir.resolve())], **launch_args)
-    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("GRADIO_SERVER_PORT", "7860")))
+    uvicorn.run(app, host=os.environ.get("GRADIO_SERVER_NAME", "127.0.0.1"), port=int(os.environ.get("GRADIO_SERVER_PORT", "7860")))
 
 
 def run(config: Config) -> None:

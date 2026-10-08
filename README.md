@@ -52,7 +52,24 @@ Set these in a `.env` file in the project root (there is no `.env.example`; this
 | `RETRIEVAL_K` | `6` | Chunks retrieved per question |
 | `DATA_DIR` | `database` | Root of all data folders |
 
+The `ui` command also reads two optional settings: `GRADIO_SERVER_PORT` (default `7860`) and `GRADIO_SERVER_NAME` (default `127.0.0.1`). See *Sharing the app with colleagues* below.
+
 The chunk token cap, the short-Section merge threshold and the Chroma collection name (`navigate_manual`) are constants in `src/navigate_helper/config.py`.
+
+## Sharing the app with colleagues
+
+By default the app only accepts connections from the machine it runs on (`http://127.0.0.1:7860`). To let colleagues on the company network use it, start it listening on all network interfaces:
+
+```powershell
+$env:GRADIO_SERVER_NAME = "0.0.0.0"
+uv run python -m navigate_helper ui
+```
+
+or put `GRADIO_SERVER_NAME=0.0.0.0` in `.env`. Colleagues then open `http://<PC name or IP address>:7860`.
+
+- Windows Firewall needs an inbound rule for the port (7860 unless `GRADIO_SERVER_PORT` is set). That is a manual step on the machine, not part of the code.
+- The app works only while that PC is on and the command is running.
+- There is no login: the app is read-only and meant for use inside the company network. Do not expose it to the internet; every question costs money on the OpenAI key.
 
 **First run:** `embed` and `ask` download the e5 embedding model (about 1 GB) into the Hugging Face cache once.
 
