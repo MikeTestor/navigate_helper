@@ -307,3 +307,15 @@ def test_page_viewer_has_a_hidden_jump_box_whose_input_loads_the_page(config):
     deps = [d for d in blocks.config["dependencies"] if (box["id"], "change") in [tuple(t) for t in d["targets"]]]
     assert len(deps) == 1 and len(deps[0]["outputs"]) == ui.VIEWER_OUTPUT_COUNT + 1
     assert f"#{ui.JUMP_ID} textarea" in ui.PAGE_JUMP_JS and "navigateHelperPage" in ui.PAGE_JUMP_JS
+
+
+def test_a_page_jump_deselects_the_page_link_so_it_can_be_chosen_again(config):
+    with gr.Blocks() as blocks:
+        radio = gr.Radio(choices=["Afwikkeling.htm"], value="Afwikkeling.htm")
+        outputs, show, _ = ui.build_page_viewer(config, links=radio)
+    fn = next(f for f in blocks.fns.values() if f.fn and f.fn.__name__ == "jump_to")
+    result = fn.fn("Voorbereiden.htm")
+    assert result[-1]["value"] is None  # the radio no longer holds the page that was open before the jump
+    assert radio._id in [o._id for o in fn.outputs]
+    assert result[ui.VIEWER_OUTPUT_COUNT] == ""  # the jump box is emptied
+    assert all(u == gr.update() for u in fn.fn(""))  # an emptied box changes nothing
