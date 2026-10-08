@@ -337,6 +337,19 @@ def test_serve_mounts_the_blocks_with_raw_allowed_and_runs_one_server(monkeypatc
     monkeypatch.setattr(ui.gr, "mount_gradio_app", lambda app, blocks, path, **kw: mounted.update(kw, app=app, path=path) or "app")
     monkeypatch.setattr(ui.uvicorn, "run", lambda app, **kw: ran.update(kw, app=app))
     monkeypatch.setenv("GRADIO_SERVER_PORT", "7861")
+    monkeypatch.delenv("GRADIO_SERVER_NAME", raising=False)
     ui.serve("blocks", config, js="JS")
     assert mounted["path"] == "/" and mounted["js"] == "JS" and str(config.raw_dir.resolve()) in mounted["allowed_paths"]
     assert ran == {"app": "app", "host": "127.0.0.1", "port": 7861}
+
+
+def test_serve_listens_on_localhost_unless_a_host_is_configured(monkeypatch, config):
+    ran = {}
+    monkeypatch.setattr(ui.gr, "mount_gradio_app", lambda app, blocks, path, **kw: "app")
+    monkeypatch.setattr(ui.uvicorn, "run", lambda app, **kw: ran.update(kw))
+    monkeypatch.delenv("GRADIO_SERVER_NAME", raising=False)
+    ui.serve("blocks", config)
+    assert ran["host"] == "127.0.0.1"
+    monkeypatch.setenv("GRADIO_SERVER_NAME", "0.0.0.0")
+    ui.serve("blocks", config)
+    assert ran["host"] == "0.0.0.0"
