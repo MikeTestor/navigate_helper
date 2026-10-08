@@ -80,6 +80,18 @@ def test_links_to_other_manual_pages_become_plain_text(config):
     assert 'href="https://example.nl/a"' in out and 'href="mailto:a@b.nl"' in out and 'href="#boven"' in out
 
 
+def test_anchor_links_stay_inside_the_iframe_document(config):
+    html = '<p><a href="#deel">naar deel</a></p><h2><a name="deel"></a>Deel</h2>'
+    doc = iframe_doc(page_view.PageView("", page_view.raw_iframe(page_view.rewrite_page(html, config.raw_dir)), ""))
+    assert 'href="about:srcdoc#deel"' in doc  # a bare #deel would load the app's own URL in the frame
+    assert 'name="deel"' in doc
+
+
+def test_full_page_copy_keeps_plain_anchor_links(config):
+    out = page_view.rewrite_page('<a href="#deel">x</a>', config.raw_dir)
+    assert 'href="#deel"' in out
+
+
 def test_heading_has_title_and_open_full_page_link_without_a_path(config):
     view = page_viewer("with_files.htm", config)
     assert "Pagina met afbeeldingen" in view.heading
