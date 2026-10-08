@@ -10,6 +10,17 @@ from navigate_helper.config import Config, load_config
 from navigate_helper.page_view import page_viewer, resolve_image, view_dir
 
 
+JUMP_ID = "page-jump"
+# A link to another Manual Page, clicked inside the Manual page iframe, arrives as a message from that iframe;
+# it is typed into the hidden `JUMP_ID` box, whose change event loads the page in the viewer.
+PAGE_JUMP_JS = (
+    "() => { window.addEventListener('message', (e) => {"
+    " const page = e.data && e.data.navigateHelperPage;"
+    " const ours = [...document.querySelectorAll('iframe')].some((f) => f.contentWindow === e.source);"
+    " const box = document.querySelector('#" + JUMP_ID + " textarea');"
+    " if (!page || !ours || !box) return;"
+    " box.value = page; box.dispatchEvent(new Event('input', { bubbles: true })); }); }"
+)
 VIEWER_OUTPUT_COUNT = 4  # heading, raw page, Cleaned Page, Markdown source
 # Copies the Markdown source and shows "Gekopieerd" on the clicked button for a moment.
 COPY_MARKDOWN_JS = (
@@ -35,11 +46,20 @@ def build_page_viewer(config: Config | None = None):
             copy = gr.Button("Kopieer markdown", size="sm")
             cleaned = gr.Markdown()
     copy.click(None, source, None, js=COPY_MARKDOWN_JS)
+    jump = gr.Textbox(visible="hidden", elem_id=JUMP_ID)  # filled by PAGE_JUMP_JS, which the app passes to `launch(js=...)`
 
     def show(page_file: str | None):
         view = page_viewer(page_file, config)
         return view.heading, view.raw_html, view.cleaned_markdown, view.markdown_source
 
+
+    def jump_to(page_file: str | None):
+        """Load the page the iframe asked for, then empty the box so the same link works again."""
+        if not page_file:
+            return (*(gr.update() for _ in range(VIEWER_OUTPUT_COUNT)), gr.update())
+        return (*show(page_file), "")
+
+    jump.change(jump_to, jump, [heading, raw, cleaned, source, jump])
     return (heading, raw, cleaned, source), show, tabs
 
 
@@ -64,6 +84,8 @@ FOCUS_QUESTION_JS = (
     "() => { const focus = () => document.querySelector('#" + QUESTION_ID + " textarea')?.focus();"
     " window.addEventListener('focus', focus); }"
 )
+
+APP_JS = "() => { (" + FOCUS_QUESTION_JS + ")(); (" + PAGE_JUMP_JS + ")(); }"  # `launch(js=)` takes a single function
 
 LEFT_ID = "left"
 # After an Answer the chat scrolls down, but stops when the latest question reaches the top of the chat
@@ -353,10 +375,10 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
 def run(config: Config) -> None:
     assistant = build_assistant(config)  # once, at startup (slow: loads the e5 model)
     chat_blocks(assistant, config).launch(
-        allowed_paths=[str(config.raw_dir.resolve()), str(view_dir())], js=FOCUS_QUESTION_JS, css=CHAT_CSS
+        allowed_paths=[str(config.raw_dir.resolve()), str(view_dir())], js=APP_JS, css=CHAT_CSS
     )
 
 
 if __name__ == "__main__":
     _config = load_config()
-    page_viewer_blocks(_config).launch(allowed_paths=[str(_config.raw_dir.resolve()), str(view_dir())])
+    page_viewer_blocks(_config).launch(allowed_paths=[str(_config.raw_dir.resolve()), str(view_dir())], js=PAGE_JUMP_JS)

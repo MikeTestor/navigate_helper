@@ -297,3 +297,13 @@ def test_run_builds_the_assistant_once_and_serves_raw(monkeypatch, config):
     assert f"#{ui.LINKS_ID} > .wrap:not(.default) {{ max-height: calc(3 * 35px" in launched["css"]  # three rows, then scroll  # the tab strip leaves the chat its height
     # refocuses the question box when the browser tab is selected again
     assert ui.QUESTION_ID in launched["js"] and "addEventListener('focus'" in launched["js"]
+
+
+def test_page_viewer_has_a_hidden_jump_box_whose_input_loads_the_page(config):
+    with gr.Blocks() as blocks:
+        outputs, show, _ = ui.build_page_viewer(config)
+    box = next(c for c in blocks.config["components"] if c["props"].get("elem_id") == ui.JUMP_ID)
+    assert box["props"]["visible"] == "hidden"
+    deps = [d for d in blocks.config["dependencies"] if (box["id"], "change") in [tuple(t) for t in d["targets"]]]
+    assert len(deps) == 1 and len(deps[0]["outputs"]) == ui.VIEWER_OUTPUT_COUNT + 1
+    assert f"#{ui.JUMP_ID} textarea" in ui.PAGE_JUMP_JS and "navigateHelperPage" in ui.PAGE_JUMP_JS
