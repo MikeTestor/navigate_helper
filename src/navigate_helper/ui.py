@@ -31,11 +31,12 @@ COPY_MARKDOWN_JS = (
 )
 
 
-def build_page_viewer(config: Config | None = None):
+def build_page_viewer(config: Config | None = None, links: gr.Radio | None = None):
     """The Page viewer components, to be called inside a `gr.Blocks`; returns `((heading, raw, cleaned, source), show, tabs)`.
 
     `show(page_file)` loads the viewer; the chat app calls it when a Page Link is chosen. The heading sits above
     `tabs` (Manual page, Markdown page); the caller can re-enter `tabs` to add its own tab.
+    A page opened from a link inside the Manual page clears `links`, so the page it was chosen from can be chosen again.
     """
     heading = gr.HTML()
     with gr.Tabs() as tabs:  # tabs rather than columns: each gets the full width of the narrow right-hand side
@@ -56,10 +57,10 @@ def build_page_viewer(config: Config | None = None):
     def jump_to(page_file: str | None):
         """Load the page the iframe asked for, then empty the box so the same link works again."""
         if not page_file:
-            return (*(gr.update() for _ in range(VIEWER_OUTPUT_COUNT)), gr.update())
-        return (*show(page_file), "")
+            return tuple(gr.update() for _ in range(VIEWER_OUTPUT_COUNT + 1 + (links is not None)))
+        return (*show(page_file), "", *((gr.update(value=None),) if links is not None else ()))
 
-    jump.change(jump_to, jump, [heading, raw, cleaned, source, jump])
+    jump.change(jump_to, jump, [heading, raw, cleaned, source, jump, *([links] if links is not None else [])])
     return (heading, raw, cleaned, source), show, tabs
 
 
@@ -349,7 +350,7 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
                 clear_links = gr.Button("Wis lijst", size="sm")
                 box = gr.Textbox(placeholder="Stel een vraag", show_label=False, elem_id=QUESTION_ID, autofocus=True)
             with gr.Column(scale=3):
-                viewer_outputs, show, tabs = build_page_viewer(config)
+                viewer_outputs, show, tabs = build_page_viewer(config, links)
                 with tabs, gr.Tab("Debug"):
                     table = gr.Dataframe(
                         headers=DEBUG_HEADERS, interactive=False, wrap=False, column_widths=DEBUG_COLUMN_WIDTHS,
