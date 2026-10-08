@@ -69,6 +69,17 @@ def test_script_hooks_are_removed(config):
     assert "onclick" not in out and "javascript:" not in out and "<iframe" not in out
 
 
+def test_links_to_other_manual_pages_become_plain_text(config):
+    html = (
+        '<p><a href="Budgetten.htm">een</a> <a href="Page.htm#deel">twee</a> <a href="Pagina_(x),.htm">drie</a> '
+        '<a href="https://example.nl/a">vier</a> <a href="mailto:a@b.nl">vijf</a> <a href="#boven">zes</a></p>'
+    )
+    out = page_view.rewrite_page(html, config.raw_dir)
+    assert ".htm" not in out and "<a>" not in out
+    assert "een twee drie" in out
+    assert 'href="https://example.nl/a"' in out and 'href="mailto:a@b.nl"' in out and 'href="#boven"' in out
+
+
 def test_heading_has_title_and_open_full_page_link_without_a_path(config):
     view = page_viewer("with_files.htm", config)
     assert "Pagina met afbeeldingen" in view.heading

@@ -64,7 +64,7 @@ def resolve_image(src: str, raw_dir: Path) -> Path | None:
 
 
 def rewrite_page(raw_html: str, raw_dir: Path) -> str:
-    """A Manual Page that is safe to show: scripts stripped, image `src` pointing at file URLs."""
+    """A Manual Page that is safe to show: scripts stripped, image `src` pointing at file URLs, relative links as plain text."""
     soup = BeautifulSoup(raw_html, "html.parser")
     for tag in soup.find_all(["script", "iframe", "object", "embed"]):
         tag.decompose()
@@ -74,6 +74,10 @@ def rewrite_page(raw_html: str, raw_dir: Path) -> str:
                 attr.lower() in ("href", "src", "action") and str(tag[attr]).strip().lower().startswith("javascript:")
             ):
                 del tag[attr]
+    for link in soup.find_all("a", href=True):
+        href = link["href"].strip()
+        if not href.startswith("#") and not _EXTERNAL.match(href):
+            link.unwrap()  # a relative link cannot resolve inside the srcdoc iframe or the full-page copy
     for img in soup.find_all("img"):
         path = resolve_image(img.get("src") or "", raw_dir)
         if path is not None:
