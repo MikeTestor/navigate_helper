@@ -280,15 +280,11 @@ def test_question_box_is_focused_on_open(config):
 def test_run_builds_the_assistant_once_and_serves_raw(monkeypatch, config):
     built, launched = [], {}
 
-    class FakeBlocks:
-        def launch(self, **kwargs):
-            launched.update(kwargs)
-
     monkeypatch.setattr(ui, "build_assistant", lambda c: built.append(c) or FakeAssistant())
-    monkeypatch.setattr(ui, "chat_blocks", lambda assistant, c: FakeBlocks())
+    monkeypatch.setattr(ui, "chat_blocks", lambda assistant, c: "blocks")
+    monkeypatch.setattr(ui, "serve", lambda blocks, c, **kwargs: launched.update(kwargs, blocks=blocks, config=c))
     ui.run(config)
-    assert built == [config]
-    assert str(config.raw_dir.resolve()) in launched["allowed_paths"]
+    assert built == [config] and launched["blocks"] == "blocks" and launched["config"] == config
     assert f"#{ui.CHAT_ID} .message-wrap > .message-buttons" in launched["css"]  # copy button beside the message text
     assert f"#{ui.CHAT_ID} .message-buttons .icon-button-wrapper {{ margin: 0; }}" in launched["css"]  # equal sizes
     assert f"#{ui.LEFT_ID} {{ height: calc(100vh" in launched["css"]  # question box pinned to the bottom left
@@ -297,6 +293,7 @@ def test_run_builds_the_assistant_once_and_serves_raw(monkeypatch, config):
     assert f"#{ui.LINKS_ID} > .wrap:not(.default) {{ max-height: calc(3 * 35px" in launched["css"]  # three rows, then scroll  # the tab strip leaves the chat its height
     # refocuses the question box when the browser tab is selected again
     assert ui.QUESTION_ID in launched["js"] and "addEventListener('focus'" in launched["js"]
+    assert "navigateHelperPage" in launched["js"]  # and carries a link in the page to the viewer
 
 
 def test_page_viewer_has_a_hidden_jump_box_whose_input_loads_the_page(config):
@@ -319,3 +316,27 @@ def test_a_page_jump_deselects_the_page_link_so_it_can_be_chosen_again(config):
     assert radio._id in [o._id for o in fn.outputs]
     assert result[ui.VIEWER_OUTPUT_COUNT] == ""  # the jump box is emptied
     assert all(u == gr.update() for u in fn.fn(""))  # an emptied box changes nothing
+
+
+def test_manual_route_serves_pages_with_a_script_blocking_policy(config):
+    from fastapi.testclient import TestClient
+
+    htm = config.htm_dir
+    htm.mkdir(parents=True)
+    (htm / "A.htm").write_text("<html><title>A</title><body><script>x()</script><p>Tekst</p></body></html>", encoding="utf-8")
+    client = TestClient(ui.manual_app(config))
+    ok = client.get("/manual/A.htm")
+    assert ok.status_code == 200 and "Tekst" in ok.text and "<script" not in ok.text
+    assert "script-src 'none'" in ok.headers["content-security-policy"]
+    assert client.get("/manual/missing.htm").status_code == 404
+    assert client.get("/manual/..%2FA.htm").status_code == 404
+
+
+def test_serve_mounts_the_blocks_with_raw_allowed_and_runs_one_server(monkeypatch, config):
+    mounted, ran = {}, {}
+    monkeypatch.setattr(ui.gr, "mount_gradio_app", lambda app, blocks, path, **kw: mounted.update(kw, app=app, path=path) or "app")
+    monkeypatch.setattr(ui.uvicorn, "run", lambda app, **kw: ran.update(kw, app=app))
+    monkeypatch.setenv("GRADIO_SERVER_PORT", "7861")
+    ui.serve("blocks", config, js="JS")
+    assert mounted["path"] == "/" and mounted["js"] == "JS" and str(config.raw_dir.resolve()) in mounted["allowed_paths"]
+    assert ran == {"app": "app", "host": "127.0.0.1", "port": 7861}
