@@ -97,8 +97,13 @@ def rewrite_cleaned(markdown: str, raw_dir: Path) -> str:
 
 
 def raw_iframe(rewritten: str, height: str = IFRAME_HEIGHT) -> str:
+    # In a srcdoc iframe a bare `#anchor` resolves against the app's URL and loads it in the frame; `about:srcdoc#anchor` scrolls.
+    soup = BeautifulSoup(rewritten, "html.parser")
+    for link in soup.find_all("a", href=True):
+        if link["href"].startswith("#"):
+            link["href"] = "about:srcdoc" + link["href"]
     return (
-        f'<iframe sandbox="allow-same-origin" srcdoc="{html.escape(rewritten)}" '
+        f'<iframe sandbox="allow-same-origin" srcdoc="{html.escape(str(soup))}" '
         f'style="width:100%;height:{height};min-height:{IFRAME_MIN_HEIGHT};border:1px solid #ccc"></iframe>'
     )
 
