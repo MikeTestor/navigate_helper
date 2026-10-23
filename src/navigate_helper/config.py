@@ -36,6 +36,7 @@ class Config:
     embedding_model: str
     retrieval_k: int
     data_dir: Path
+    code_dir: Path | None = None
 
     @property
     def raw_dir(self) -> Path:
@@ -80,4 +81,5 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         embedding_model=env.get("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL),
         retrieval_k=int(env.get("RETRIEVAL_K", DEFAULT_RETRIEVAL_K)),
         data_dir=Path(env.get("DATA_DIR", DEFAULT_DATA_DIR)),
+        code_dir=Path(env["CODE_DIR"]) if env.get("CODE_DIR") else None,
     )
