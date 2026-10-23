@@ -1,4 +1,4 @@
-"""The ui stage: the Gradio dev app. It knows only `Answer`; the rules are in docs/design-decisions.md,
+"""The ui stage: the Gradio dev app. It knows only `ManualAnswer`; the rules are in docs/design-decisions.md,
 section "Stages 4 and 5 – Gradio dev app"."""
 
 import os
@@ -9,7 +9,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
-from navigate_helper.ask import Answer, build_assistant
+from navigate_helper.ask import ManualAnswer, build_assistant
 from navigate_helper.config import Config, load_config
 from navigate_helper.page_view import FULL_PAGE_PREFIX, page_viewer, resolve_image, served_page
 
@@ -142,7 +142,7 @@ class AnswerView:
     debug_notes: str = ""
 
 
-def answer_view(answer: Answer, config: Config) -> AnswerView:
+def answer_view(answer: ManualAnswer, config: Config) -> AnswerView:
     gallery, seen = [], set()
     for chunk in answer.cited:
         for src in chunk.screenshots:

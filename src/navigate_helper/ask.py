@@ -1,34 +1,20 @@
-"""The ask stage: a question to an `Answer`, written only from the retrieved Manual Chunks.
+"""The ask stage: a question to a `ManualAnswer`, written only from the retrieved Manual Chunks.
 
 The rules are in docs/design-decisions.md, section "Answering". Retrieval and config errors raise;
-LLM problems come back as an `Answer` with `error` set.
+LLM problems come back as a `ManualAnswer` with `error` set.
 """
 
 import json
-import warnings
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 
-from pydantic import BaseModel, Field
-
-from navigate_helper.config import MAX_COMPLETION_TOKENS, Config, load_config
+from navigate_helper.ask_log import AskLog
+from navigate_helper.config import Config, load_config
 from navigate_helper.embed import ChromaRetriever, load_embedder, open_store
+from navigate_helper.llm import OpenAILLM
 from navigate_helper.prompts import APOLOGY, CONTEXT_TEMPLATE, SYSTEM_PROMPT
 
 CLOSEST_PAGES = 3
-
-
-class LLMAnswer(BaseModel):
-    """The fixed structured-output schema."""
-
-    answer: str = Field(description="Het antwoord in het Nederlands (Markdown), zonder verwijzingen naar chunk_ids.")
-    covered: bool = Field(description="False als de context de vraag niet beantwoordt.")
-    cited_chunk_ids: list[str] = Field(description="De chunk_ids die voor het antwoord zijn gebruikt.")
-
-
-class LLMError(RuntimeError):
-    """The LLM refused, was cut off, or returned nothing usable."""
 
 
 @dataclass
@@ -62,7 +48,7 @@ class ScoredChunk:
 
 
 @dataclass
-class Answer:
+class ManualAnswer:
     question: str
     text: str
     covered: bool
@@ -96,57 +82,29 @@ class JsonChunkStore:
         return self._pages[stem][chunk_id]
 
 
-class OpenAILLM:
-    """`ChatOpenAI` with strict structured output; `invoke(messages)` returns an `LLMAnswer` or raises."""
-
-    def __init__(self, config: Config):
-        from langchain_openai import ChatOpenAI
-
-        chat = ChatOpenAI(
-            model=config.llm_model,
-            api_key=config.require_api_key(),
-            reasoning_effort=config.llm_reasoning_effort,
-            max_completion_tokens=MAX_COMPLETION_TOKENS,
-        )
-        self._chat = chat
-        self._chain = chat.with_structured_output(LLMAnswer, method="json_schema", strict=True, include_raw=True)
-
-    def invoke(self, messages) -> LLMAnswer:
-        result = self._chain.invoke(messages)
-        raw = result.get("raw")
-        if raw is not None:
-            if raw.additional_kwargs.get("refusal"):
-                raise LLMError(f"the model refused: {raw.additional_kwargs['refusal']}")
-            if (getattr(raw, "response_metadata", None) or {}).get("finish_reason") == "length":
-                raise LLMError(f"the answer was cut off at {MAX_COMPLETION_TOKENS} completion tokens")
-        if result.get("parsed") is None:
-            raise LLMError(f"unparseable model output: {result.get('parsing_error')}")
-        return result["parsed"]
-
-
 class Assistant:
     def __init__(self, retriever, llm, chunk_store, k: int, log_path: Path | None = None, model: str = ""):
         self._retriever = retriever
         self._llm = llm
         self._chunks = chunk_store
         self._k = k
-        self._log_path = log_path
-        self._model = model
+        self._log = AskLog(log_path, model) if log_path is not None else None
 
-    def ask(self, question: str) -> Answer:
+    def ask(self, question: str) -> ManualAnswer:
         hits = self._retriever.retrieve(question, self._k)  # retrieval errors raise
         retrieved = [ScoredChunk.from_chunk(self._chunks.get(chunk_id), score) for chunk_id, score in hits]
         answer = self._answer(question, retrieved)
-        self._log(answer)
+        if self._log is not None:
+            self._log.write(asdict(answer))
         return answer
 
-    def _answer(self, question: str, retrieved: list[ScoredChunk]) -> Answer:
+    def _answer(self, question: str, retrieved: list[ScoredChunk]) -> ManualAnswer:
         context = "\n\n".join(f"[{c.chunk_id}]\n{c.text}" for c in retrieved)
         prompt = [("system", SYSTEM_PROMPT), ("human", CONTEXT_TEMPLATE.format(context=context, question=question))]
         try:
             output = self._llm.invoke(prompt)
         except Exception as error:  # refusal, truncation, API errors: never raised to the caller
-            return Answer(question, APOLOGY, covered=False, retrieved=retrieved, error=f"{type(error).__name__}: {error}")
+            return ManualAnswer(question, APOLOGY, covered=False, retrieved=retrieved, error=f"{type(error).__name__}: {error}")
 
         by_id = {c.chunk_id: c for c in retrieved}
         cited: list[ScoredChunk] = []
@@ -161,7 +119,7 @@ class Assistant:
             chunk.cited = True
 
         pages = _pages(cited) if output.covered else closest_pages(retrieved)
-        return Answer(
+        return ManualAnswer(
             question=question,
             text=output.answer,
             covered=output.covered,
@@ -174,17 +132,6 @@ class Assistant:
             source_pages=pages,
             dropped_citation_ids=dropped,
         )
-
-    def _log(self, answer: Answer) -> None:
-        if self._log_path is None:
-            return
-        record = {"timestamp": datetime.now(timezone.utc).isoformat(), "model": self._model, **asdict(answer)}
-        try:
-            self._log_path.parent.mkdir(parents=True, exist_ok=True)
-            with self._log_path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-        except OSError as error:
-            warnings.warn(f"could not write the ask log {self._log_path}: {error}")
 
 
 def _unique(items, key=lambda item: item) -> list:
@@ -222,7 +169,7 @@ def build_assistant(config: Config | None = None) -> Assistant:
     )
 
 
-def format_answer(answer: Answer) -> str:
+def format_answer(answer: ManualAnswer) -> str:
     lines = [answer.text]
     if answer.error:
         lines += ["", f"[fout: {answer.error}]"]
@@ -238,7 +185,7 @@ def format_answer(answer: Answer) -> str:
     return "\n".join(lines)
 
 
-def run(config: Config, question: str) -> Answer:
+def run(config: Config, question: str) -> ManualAnswer:
     answer = build_assistant(config).ask(question)
     print(format_answer(answer))
     return answer

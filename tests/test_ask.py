@@ -4,8 +4,9 @@ import warnings
 import pytest
 
 from navigate_helper import ask, cli
-from navigate_helper.ask import Assistant, JsonChunkStore, LLMAnswer
+from navigate_helper.ask import Assistant, JsonChunkStore
 from navigate_helper.config import load_config
+from navigate_helper.llm import LLMAnswer, LLMError, OpenAILLM
 from navigate_helper.prompts import APOLOGY, SYSTEM_PROMPT
 from tests.fakes import FakeChunkStore, FakeLLM, FakeRetriever
 from tests.test_embed import make_chunk, write_page
@@ -93,7 +94,7 @@ def test_prompt_has_dutch_system_message_and_chunk_id_plus_text_blocks_without_s
     assert body.endswith("Vraag: Hoe boek ik?")
 
 
-@pytest.mark.parametrize("error", [RuntimeError("refused"), ask.LLMError("cut off"), TimeoutError("api")])
+@pytest.mark.parametrize("error", [RuntimeError("refused"), LLMError("cut off"), TimeoutError("api")])
 def test_llm_problems_return_an_answer_with_error_and_keep_retrieved(error):
     answer = assistant(error=error)[0].ask("vraag")
     assert answer.error and str(error) in answer.error
@@ -174,7 +175,7 @@ class StubChain:
 
 
 def adapter(result):
-    llm = ask.OpenAILLM(load_config({"OPENAI_API_KEY": "sk-test"}))  # builds the client, calls nothing
+    llm = OpenAILLM(load_config({"OPENAI_API_KEY": "sk-test"}))  # builds the client, calls nothing
     llm._chain = StubChain(result)
     return llm
 
@@ -197,10 +198,10 @@ def test_adapter_returns_the_parsed_answer():
     ({"raw": raw_message(), "parsed": None, "parsing_error": ValueError("bad")}, "unparseable"),
 ])
 def test_adapter_raises_llm_error_for_refusal_truncation_and_bad_output(result, message):
-    with pytest.raises(ask.LLMError, match=message):
+    with pytest.raises(LLMError, match=message):
         adapter(result).invoke([])
 
 
 def test_adapter_uses_the_configured_effort_and_token_cap_without_temperature():
-    chat = ask.OpenAILLM(load_config({"OPENAI_API_KEY": "sk-test", "LLM_REASONING_EFFORT": "low"}))._chat
+    chat = OpenAILLM(load_config({"OPENAI_API_KEY": "sk-test", "LLM_REASONING_EFFORT": "low"}))._chat
     assert chat.reasoning_effort == "low" and chat.max_tokens == 4000 and chat.temperature is None
