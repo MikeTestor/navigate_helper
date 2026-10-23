@@ -2,7 +2,7 @@ import gradio as gr
 import pytest
 
 from navigate_helper import ui
-from navigate_helper.ask import Answer, ScoredChunk
+from navigate_helper.ask import ManualAnswer, ScoredChunk
 from navigate_helper.config import load_config
 
 
@@ -33,7 +33,7 @@ def make_answer(**overrides):
         screenshots=["images/a.png", "images/missing.png", "images/b.png"], page_links=[link],
         dropped_citation_ids=["Fout#9"],
     )
-    return Answer(**{**fields, **overrides})
+    return ManualAnswer(**{**fields, **overrides})
 
 
 def test_gallery_is_deduplicated_captioned_and_skips_missing_files(config):

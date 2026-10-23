@@ -1,7 +1,7 @@
-"""The ask stage: a question to an `Answer`, written only from the retrieved Manual Chunks.
+"""The ask stage: a question to a `ManualAnswer`, written only from the retrieved Manual Chunks.
 
 The rules are in docs/design-decisions.md, section "Answering". Retrieval and config errors raise;
-LLM problems come back as an `Answer` with `error` set.
+LLM problems come back as a `ManualAnswer` with `error` set.
 """
 
 import json
@@ -49,7 +49,7 @@ class ScoredChunk:
 
 
 @dataclass
-class Answer:
+class ManualAnswer:
     question: str
     text: str
     covered: bool
@@ -92,20 +92,20 @@ class Assistant:
         self._log_path = log_path
         self._model = model
 
-    def ask(self, question: str) -> Answer:
+    def ask(self, question: str) -> ManualAnswer:
         hits = self._retriever.retrieve(question, self._k)  # retrieval errors raise
         retrieved = [ScoredChunk.from_chunk(self._chunks.get(chunk_id), score) for chunk_id, score in hits]
         answer = self._answer(question, retrieved)
         self._log(answer)
         return answer
 
-    def _answer(self, question: str, retrieved: list[ScoredChunk]) -> Answer:
+    def _answer(self, question: str, retrieved: list[ScoredChunk]) -> ManualAnswer:
         context = "\n\n".join(f"[{c.chunk_id}]\n{c.text}" for c in retrieved)
         prompt = [("system", SYSTEM_PROMPT), ("human", CONTEXT_TEMPLATE.format(context=context, question=question))]
         try:
             output = self._llm.invoke(prompt)
         except Exception as error:  # refusal, truncation, API errors: never raised to the caller
-            return Answer(question, APOLOGY, covered=False, retrieved=retrieved, error=f"{type(error).__name__}: {error}")
+            return ManualAnswer(question, APOLOGY, covered=False, retrieved=retrieved, error=f"{type(error).__name__}: {error}")
 
         by_id = {c.chunk_id: c for c in retrieved}
         cited: list[ScoredChunk] = []
@@ -120,7 +120,7 @@ class Assistant:
             chunk.cited = True
 
         pages = _pages(cited) if output.covered else closest_pages(retrieved)
-        return Answer(
+        return ManualAnswer(
             question=question,
             text=output.answer,
             covered=output.covered,
@@ -134,7 +134,7 @@ class Assistant:
             dropped_citation_ids=dropped,
         )
 
-    def _log(self, answer: Answer) -> None:
+    def _log(self, answer: ManualAnswer) -> None:
         if self._log_path is None:
             return
         record = {"timestamp": datetime.now(timezone.utc).isoformat(), "model": self._model, **asdict(answer)}
@@ -181,7 +181,7 @@ def build_assistant(config: Config | None = None) -> Assistant:
     )
 
 
-def format_answer(answer: Answer) -> str:
+def format_answer(answer: ManualAnswer) -> str:
     lines = [answer.text]
     if answer.error:
         lines += ["", f"[fout: {answer.error}]"]
@@ -197,7 +197,7 @@ def format_answer(answer: Answer) -> str:
     return "\n".join(lines)
 
 
-def run(config: Config, question: str) -> Answer:
+def run(config: Config, question: str) -> ManualAnswer:
     answer = build_assistant(config).ask(question)
     print(format_answer(answer))
     return answer
