@@ -5,11 +5,10 @@ LLM problems come back as a `ManualAnswer` with `error` set.
 """
 
 import json
-import warnings
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 
+from navigate_helper.ask_log import AskLog
 from navigate_helper.config import Config, load_config
 from navigate_helper.embed import ChromaRetriever, load_embedder, open_store
 from navigate_helper.llm import OpenAILLM
@@ -89,14 +88,14 @@ class Assistant:
         self._llm = llm
         self._chunks = chunk_store
         self._k = k
-        self._log_path = log_path
-        self._model = model
+        self._log = AskLog(log_path, model) if log_path is not None else None
 
     def ask(self, question: str) -> ManualAnswer:
         hits = self._retriever.retrieve(question, self._k)  # retrieval errors raise
         retrieved = [ScoredChunk.from_chunk(self._chunks.get(chunk_id), score) for chunk_id, score in hits]
         answer = self._answer(question, retrieved)
-        self._log(answer)
+        if self._log is not None:
+            self._log.write(asdict(answer))
         return answer
 
     def _answer(self, question: str, retrieved: list[ScoredChunk]) -> ManualAnswer:
@@ -133,17 +132,6 @@ class Assistant:
             source_pages=pages,
             dropped_citation_ids=dropped,
         )
-
-    def _log(self, answer: ManualAnswer) -> None:
-        if self._log_path is None:
-            return
-        record = {"timestamp": datetime.now(timezone.utc).isoformat(), "model": self._model, **asdict(answer)}
-        try:
-            self._log_path.parent.mkdir(parents=True, exist_ok=True)
-            with self._log_path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-        except OSError as error:
-            warnings.warn(f"could not write the ask log {self._log_path}: {error}")
 
 
 def _unique(items, key=lambda item: item) -> list:

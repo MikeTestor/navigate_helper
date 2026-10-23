@@ -86,6 +86,7 @@ src/navigate_helper/
   embed.py              stage 3: Chunks -> Chroma store
   ask.py                ask() and ManualAnswer
   llm.py                the OpenAI adapter behind ask()
+  ask_log.py            the ask_log.jsonl writer
   ui.py                 Gradio dev app
 tests/                  pytest; fixtures/pages holds four small Manual Pages
 database/               data, not committed (knowledge-base/, embedded/, ask_log.jsonl)
