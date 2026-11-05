@@ -20,7 +20,7 @@ def test_runtime_dependencies_import():
 
 def test_config_defaults():
     config = load_config({})
-    assert config.llm_model == "gpt-5-mini"
+    assert config.llm_model == "gpt-5.4-mini"
     assert config.llm_reasoning_effort == "low"
     assert config.embedding_model == "intfloat/multilingual-e5-base"
     assert config.retrieval_k == 6

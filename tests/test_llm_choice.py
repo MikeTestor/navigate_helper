@@ -14,17 +14,17 @@ OPENAI = {"OPENAI_API_KEY": "sk-test"}
 
 def test_the_allowlist_is_fixed_per_provider_and_starts_with_the_default_model():
     assert PROVIDER_MODELS == {
-        "openai": ("gpt-5-mini",),
+        "openai": ("gpt-5.4-mini",),
         "anthropic": ("claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5"),
     }
     config = load_config({})
-    assert allowed_models(config, "openai") == ("gpt-5-mini",)
+    assert allowed_models(config, "openai") == ("gpt-5.4-mini",)
     assert allowed_models(config, "anthropic")[0] == "claude-sonnet-5-5"
 
 
 def test_a_model_set_in_env_for_the_default_provider_is_allowed_and_listed_first():
     config = load_config({"LLM_MODEL": "gpt-next"})
-    assert allowed_models(config, "openai") == ("gpt-next", "gpt-5-mini")
+    assert allowed_models(config, "openai") == ("gpt-next", "gpt-5.4-mini")
     assert allowed_models(config, "anthropic") == PROVIDER_MODELS["anthropic"]  # only the default provider gains it
 
 
@@ -50,9 +50,9 @@ class Factory:
 
 
 def test_the_default_choice_is_the_llm_the_app_was_started_with():
-    seed, factory = FakeLLM(provider="openai", model="gpt-5-mini"), Factory()
+    seed, factory = FakeLLM(provider="openai", model="gpt-5.4-mini"), Factory()
     switch = LLMSwitch(load_config(OPENAI), factory, seed=seed)
-    assert switch.get("openai", "gpt-5-mini") is seed and factory.configs == []
+    assert switch.get("openai", "gpt-5.4-mini") is seed and factory.configs == []
 
 
 def test_another_choice_builds_an_adapter_for_that_provider_and_model_once():
@@ -68,7 +68,7 @@ def test_another_choice_builds_an_adapter_for_that_provider_and_model_once():
 
 
 @pytest.mark.parametrize("provider, model", [
-    ("anthropic", "gpt-5-mini"),     # a real model of the other provider
+    ("anthropic", "gpt-5.4-mini"),     # a real model of the other provider
     ("openai", "gpt-4-free-text"),   # not on the allowlist
     ("mistral", "large"),            # unknown provider
     ("openai", ""),
