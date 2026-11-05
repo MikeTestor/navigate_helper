@@ -4,12 +4,13 @@
 (the Manual path); the Code Answer path passes its own.
 """
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from navigate_helper.config import MAX_COMPLETION_TOKENS, Config
+from navigate_helper.config import MAX_COMPLETION_TOKENS, Config, LLMChoiceError, allowed_models
 
 
 class LLMAnswer(BaseModel):
@@ -156,3 +157,23 @@ class AnthropicLLM:
 def build_llm(config: Config):
     """The adapter for `config.llm_provider`. Raises `MissingConfigError` without that provider's API key."""
     return AnthropicLLM(config) if config.llm_provider == "anthropic" else OpenAILLM(config)
+
+
+class LLMSwitch:
+    """The adapter for a provider and model chosen in the GUI, built on first use and kept.
+
+    Only choices on the allowlist (`allowed_models`) are built, so the dropdown values are never trusted. A choice that
+    cannot be built (no API key for that provider) raises and is not kept. `seed` is the adapter the app started with.
+    """
+
+    def __init__(self, config: Config, factory: Callable[[Config], object] = build_llm, seed=None):
+        self._config = config
+        self._factory = factory
+        self._llms = {} if seed is None else {(seed.provider, seed.model): seed}
+
+    def get(self, provider: str, model: str):
+        if model not in allowed_models(self._config, provider):
+            raise LLMChoiceError(f"model {model!r} is not on the allowlist for {provider}")
+        if (provider, model) not in self._llms:
+            self._llms[(provider, model)] = self._factory(replace(self._config, llm_provider=provider, llm_model=model))
+        return self._llms[(provider, model)]

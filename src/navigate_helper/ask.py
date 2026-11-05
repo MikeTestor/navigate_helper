@@ -92,20 +92,27 @@ class Assistant:
         self._k = k
         self._log = AskLog(log_path) if log_path is not None else None
 
-    def ask(self, question: str) -> ManualAnswer:
+    @property
+    def llm(self):
+        """The LLM used when `ask` is not given another one."""
+        return self._llm
+
+    def ask(self, question: str, llm=None) -> ManualAnswer:
+        """Answer `question`; `llm` (the GUI's provider and model choice) replaces the default for this question only."""
+        llm = llm or self._llm
         hits = self._retriever.retrieve(question, self._k)  # retrieval errors raise
         retrieved = [ScoredChunk.from_chunk(self._chunks.get(chunk_id), score) for chunk_id, score in hits]
-        answer = self._answer(question, retrieved)
-        answer.provider, answer.model = self._llm.provider, self._llm.model
+        answer = self._answer(question, retrieved, llm)
+        answer.provider, answer.model = llm.provider, llm.model
         if self._log is not None:
             self._log.write(asdict(answer))
         return answer
 
-    def _answer(self, question: str, retrieved: list[ScoredChunk]) -> ManualAnswer:
+    def _answer(self, question: str, retrieved: list[ScoredChunk], llm) -> ManualAnswer:
         context = "\n\n".join(f"[{c.chunk_id}]\n{c.text}" for c in retrieved)
         prompt = [("system", SYSTEM_PROMPT), ("human", CONTEXT_TEMPLATE.format(context=context, question=question))]
         try:
-            output = self._llm.invoke(prompt)
+            output = llm.invoke(prompt)
         except Exception as error:  # refusal, truncation, API errors: never raised to the caller
             return ManualAnswer(question, APOLOGY, covered=False, retrieved=retrieved, error=f"{type(error).__name__}: {error}")
 

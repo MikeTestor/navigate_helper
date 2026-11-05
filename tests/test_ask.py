@@ -277,3 +277,26 @@ def test_anthropic_adapter_without_key_is_a_config_error():
 def test_build_llm_picks_the_adapter_for_the_provider():
     assert isinstance(build_llm(load_config({"OPENAI_API_KEY": "sk-test"})), OpenAILLM)
     assert isinstance(build_llm(load_config(ANTHROPIC_ENV)), AnthropicLLM)
+
+
+# --- a per-question LLM (the provider and model dropdowns) ----------------------------------------
+
+
+def test_ask_can_use_another_llm_for_one_question_and_records_it():
+    sut, default, _ = assistant(result=reply(["A#0"]))
+    other = FakeLLM(result=reply(["B#0"], text="Ander."), provider="anthropic", model="claude-haiku-5-5")
+    answer = sut.ask("vraag", llm=other)
+    assert answer.text == "Ander." and (answer.provider, answer.model) == ("anthropic", "claude-haiku-5-5")
+    assert len(other.prompts) == 1 and default.prompts == []
+    assert sut.ask("volgende").provider == "fake"  # the next question is back on the default LLM
+
+
+def test_a_failing_per_question_llm_gives_an_error_answer_recorded_with_that_llm():
+    sut, _, _ = assistant(result=reply(["A#0"]))
+    answer = sut.ask("vraag", llm=FakeLLM(error=LLMError("nee"), provider="anthropic", model="m"))
+    assert answer.error and (answer.provider, answer.model) == ("anthropic", "m")
+
+
+def test_the_assistant_exposes_its_default_llm():
+    sut, default, _ = assistant(result=reply([]))
+    assert sut.llm is default

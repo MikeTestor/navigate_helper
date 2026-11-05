@@ -18,7 +18,12 @@ CODE_SEARCH_MAX_SECONDS = 600
 
 PROVIDERS = ("openai", "anthropic")
 DEFAULT_LLM_PROVIDER = "openai"
-DEFAULT_LLM_MODELS = {"openai": "gpt-5-mini", "anthropic": "claude-sonnet-5-5"}
+# The models the GUI dropdown offers per provider: a fixed allowlist, never free text (ADR 0002). The first is the default.
+PROVIDER_MODELS = {
+    "openai": ("gpt-5-mini",),
+    "anthropic": ("claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5"),
+}
+DEFAULT_LLM_MODELS = {provider: models[0] for provider, models in PROVIDER_MODELS.items()}
 API_KEY_NAMES = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}
 DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-base"
 DEFAULT_REASONING_EFFORT = "low"
@@ -28,6 +33,10 @@ DEFAULT_DATA_DIR = "database"
 
 class MissingConfigError(RuntimeError):
     """A required configuration value is not set."""
+
+
+class LLMChoiceError(ValueError):
+    """A provider or model that is not on the allowlist."""
 
 
 class StageError(RuntimeError):
@@ -77,6 +86,16 @@ class Config:
         if not key:
             raise MissingConfigError(f"{API_KEY_NAMES[self.llm_provider]} is not set (put it in .env).")
         return key
+
+
+def allowed_models(config: Config, provider: str) -> tuple[str, ...]:
+    """The allowlist for `provider`. The model set in `.env` for the default provider is trusted and listed first."""
+    if provider not in PROVIDER_MODELS:
+        raise LLMChoiceError(f"unknown provider {provider!r}; choose one of {', '.join(PROVIDERS)}")
+    models = PROVIDER_MODELS[provider]
+    if provider == config.llm_provider and config.llm_model not in models:
+        return (config.llm_model, *models)
+    return models
 
 
 def load_config(env: dict[str, str] | None = None) -> Config:

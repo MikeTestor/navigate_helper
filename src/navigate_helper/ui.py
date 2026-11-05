@@ -10,7 +10,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
 from navigate_helper.ask import ManualAnswer, build_assistant
-from navigate_helper.config import Config, load_config
+from navigate_helper.config import DEFAULT_LLM_MODELS, PROVIDERS, Config, allowed_models, load_config
+from navigate_helper.llm import LLMSwitch
 from navigate_helper.page_view import FULL_PAGE_PREFIX, page_viewer, resolve_image, served_page
 
 
@@ -167,6 +168,8 @@ def answer_view(answer: ManualAnswer, config: Config) -> AnswerView:
         for c in answer.retrieved
     ]
     notes = []
+    if answer.provider:
+        notes.append(f"**model:** {answer.provider} / {answer.model}")
     if answer.error:
         notes.append(f"**error:** {answer.error}")
     if answer.dropped_citation_ids:
@@ -186,17 +189,21 @@ def merge_page_links(shown: list[tuple[str, str]], new: list[tuple[str, str]]) -
     return new + [item for item in shown if item[1] not in new_files]
 
 
-def respond(assistant, config: Config, message: str, history: list[dict], shown=()):
+def respond(assistant, config: Config, message: str, history: list[dict], shown=(), pick=None):
     """One chat turn: returns (history, textbox, page link radio, gallery, large screenshot, debug rows, debug notes,
-    shown links)."""
+    shown links).
+
+    `pick()` returns the LLM chosen in the provider and model dropdowns for this question; a refused or unavailable
+    choice (no API key) is reported in the chat like any other error.
+    """
     shown = list(shown)
     if not message.strip():
         return history, message, *(gr.update() for _ in range(5)), shown
     first_question = not history
     history = history + [{"role": "user", "content": message}]
     try:
-        answer = assistant.ask(message)
-    except Exception as error:  # retrieval and config errors raise from ask
+        answer = assistant.ask(message, llm=pick() if pick else None)
+    except Exception as error:  # retrieval and config errors raise from ask, and from an unavailable choice
         history.append({"role": "assistant", "content": f"Er ging iets mis: {type(error).__name__}: {error}"})
         return history, "", gr.update(), [], large_screenshot(None), [], f"**error:** {error}", shown
     view = answer_view(answer, config)
@@ -286,14 +293,14 @@ def switch_chat(chats: list[Conversation], index: int):
     return (index, *chat_view(chats[index]))
 
 
-def submit(assistant, config: Config, message: str, chats: list[Conversation], active: int, revision: int):
+def submit(assistant, config: Config, message: str, chats: list[Conversation], active: int, revision: int, pick=None):
     """One turn in the active conversation: the `respond` outputs, the updated conversations and tab revision.
 
     The revision goes up when a tab gets its name (the first question), so the tab strip redraws.
     """
     chat = chats[active]
     history, box, links, gallery, large, rows, notes, shown = respond(
-        assistant, config, message, chat.history, chat.shown
+        assistant, config, message, chat.history, chat.shown, pick
     )
     if message.strip():
         chat.history, chat.shown = history, shown
@@ -318,8 +325,19 @@ def keep_viewer_when_unselected(show):
     return wrapped
 
 
-def chat_blocks(assistant, config: Config) -> gr.Blocks:
-    """Chat on the left, tabs (Manual page, Markdown page, Debug) on the right."""
+def models_for(config: Config, provider: str):
+    """The model dropdown for a provider: its allowlist, with the `.env` model (default provider) or the first selected."""
+    value = config.llm_model if provider == config.llm_provider else DEFAULT_LLM_MODELS[provider]
+    return gr.update(choices=list(allowed_models(config, provider)), value=value)
+
+
+def chat_blocks(assistant, config: Config, switch: LLMSwitch | None = None) -> gr.Blocks:
+    """Chat on the left, tabs (Manual page, Markdown page, Debug) on the right.
+
+    `switch` builds the adapter for the provider and model chosen in the dropdowns; by default it starts from
+    the assistant's own LLM.
+    """
+    switch = switch or LLMSwitch(config, seed=getattr(assistant, "llm", None))
     with gr.Blocks(title="Navigate Helper") as blocks:
         chats = gr.State([Conversation()])
         active = gr.State(0)
@@ -352,6 +370,14 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
                 chat = gr.Chatbot(elem_id=CHAT_ID, autoscroll=False)
                 links = gr.Radio(label="Page Links (kies om te openen)", visible=False, elem_id=LINKS_ID)
                 clear_links = gr.Button("Wis lijst", size="sm")
+                with gr.Row():
+                    provider = gr.Dropdown(
+                        choices=list(PROVIDERS), value=config.llm_provider, label="Provider", allow_custom_value=False
+                    )
+                    model = gr.Dropdown(
+                        choices=list(allowed_models(config, config.llm_provider)), value=config.llm_model,
+                        label="Model", allow_custom_value=False,
+                    )
                 box = gr.Textbox(placeholder="Stel een vraag", show_label=False, elem_id=QUESTION_ID, autofocus=True)
             with gr.Column(scale=3):
                 viewer_outputs, show, tabs = build_page_viewer(config, links)
@@ -366,9 +392,12 @@ def chat_blocks(assistant, config: Config) -> gr.Blocks:
                     large = gr.Image(label="Screenshot", interactive=False)
         view = [chat, links, gallery, large, table, notes]
 
+        provider.change(lambda name: models_for(config, name), provider, model)
         box.submit(
-            lambda message, chats, active, rev: submit(assistant, config, message, chats, active, rev),
-            [box, chats, active, revision],
+            lambda message, name, choice, chats, active, rev: submit(
+                assistant, config, message, chats, active, rev, pick=lambda: switch.get(name, choice)
+            ),
+            [box, provider, model, chats, active, revision],
             [chat, box, links, gallery, large, table, notes, chats, revision],
         ).then(None, None, None, js=SCROLL_TO_QUESTION_JS)
         gallery.select(select_screenshot, None, large)
