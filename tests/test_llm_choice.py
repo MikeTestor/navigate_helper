@@ -14,17 +14,17 @@ OPENAI = {"OPENAI_API_KEY": "sk-test"}
 
 def test_the_allowlist_is_fixed_per_provider_and_starts_with_the_default_model():
     assert PROVIDER_MODELS == {
-        "openai": ("gpt-5.4-mini",),
+        "openai": ("gpt-5.4-mini", "gpt-5.6-terra"),
         "anthropic": ("claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5"),
     }
     config = load_config({})
-    assert allowed_models(config, "openai") == ("gpt-5.4-mini",)
+    assert allowed_models(config, "openai") == ("gpt-5.4-mini", "gpt-5.6-terra")
     assert allowed_models(config, "anthropic")[0] == "claude-sonnet-5-5"
 
 
 def test_a_model_set_in_env_for_the_default_provider_is_allowed_and_listed_first():
     config = load_config({"LLM_MODEL": "gpt-next"})
-    assert allowed_models(config, "openai") == ("gpt-next", "gpt-5.4-mini")
+    assert allowed_models(config, "openai") == ("gpt-next", "gpt-5.4-mini", "gpt-5.6-terra")
     assert allowed_models(config, "anthropic") == PROVIDER_MODELS["anthropic"]  # only the default provider gains it
 
 
