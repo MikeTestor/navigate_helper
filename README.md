@@ -48,7 +48,7 @@ Set these in a `.env` file in the project root (there is no `.env.example`; this
 | `LLM_PROVIDER` | `openai` | `openai` or `anthropic` |
 | `OPENAI_API_KEY` | none | OpenAI key |
 | `ANTHROPIC_API_KEY` | none | Anthropic key |
-| `LLM_MODEL` | `gpt-5-mini` (OpenAI), `claude-sonnet-5-5` (Anthropic) | Chat model |
+| `LLM_MODEL` | `gpt-5.4-mini` (OpenAI), `claude-sonnet-5-5` (Anthropic) | Chat model |
 | `LLM_REASONING_EFFORT` | `low` | Reasoning effort for the chat model |
 | `EMBEDDING_MODEL` | `intfloat/multilingual-e5-base` | Local embedding model |
 | `RETRIEVAL_K` | `6` | Chunks retrieved per question |
@@ -77,7 +77,7 @@ or put `GRADIO_SERVER_NAME=0.0.0.0` in `.env`. Colleagues then open `http://<PC 
 
 **First run:** `embed` and `ask` download the e5 embedding model (about 1 GB) into the Hugging Face cache once.
 
-**Model deadline:** OpenAI removes `gpt-5-mini` and `gpt-5` from its API on **2026-12-11**. The follow-up [Pick the successor to gpt-5-mini](https://github.com/MikeTestor/navigate_helper/issues/25) must land before then. `LLM_PROVIDER=anthropic` is available as an alternative (not yet checked against the live API).
+**Model deadline:** OpenAI removes `gpt-5-mini` and `gpt-5` from its API on **2026-12-11**. The default OpenAI model is now `gpt-5.4-mini` ([issue 25](https://github.com/MikeTestor/navigate_helper/issues/25)); a `.env` that still sets `LLM_MODEL=gpt-5-mini` must be changed or removed before then. `LLM_PROVIDER=anthropic` is available as an alternative (not yet checked against the live API).
 
 ## Code layout
 

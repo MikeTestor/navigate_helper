@@ -35,7 +35,7 @@ Source: [Scaffolding](https://github.com/MikeTestor/navigate_helper/issues/2).
 - **Tests**: `pytest` under `tests/`. Four small committed fixture pages (tables; no `##`/`###`; a `_files` folder; merge codes). Tests never read `raw/`. Property assertions, not snapshots. Fake embedder, retriever, chunk store and LLM by default, plus one `@pytest.mark.slow` test with the real e5 model, skipped by default. Each build issue writes its own tests.
 - **Notebooks**: delete `02_test_llms.ipynb` and `sample_docs`; keep `01_explore.ipynb` only if it is about the Manual.
 - **README**: owned by the scaffolding build issue: package name, `uv`/venv setup, commands, `.env` keys, code layout, the first-run e5 download (about 1 GB) and the model deadline below.
-- **Default model**: `gpt-5-mini`. OpenAI removes it (and `gpt-5`) from the API on **2026-12-11**; a follow-up issue picks the successor (`gpt-5.6-terra` or `gpt-5.4-mini`) and verifies structured output and citations before then.
+- **Default model**: `gpt-5.4-mini` ($0.75 / $4.50 per 1M tokens), chosen in [issue 25](https://github.com/MikeTestor/navigate_helper/issues/25) as the closest successor to `gpt-5-mini`, which OpenAI removes (with `gpt-5`) from the API on **2026-12-11**. The other candidate, `gpt-5.6-terra` ($2 / $12), was not picked: it costs about 2.7× as much. Live check on 2026-11-05 (9 questions through `ask()`, `gpt-5.4-mini`, `LLM_REASONING_EFFORT=low`, 4000 max completion tokens): all calls succeeded with strict structured output and the settings accepted; every covered Answer had valid citations and none had dropped ones; Answers were Dutch (also for an English question); the out-of-scope question was refused as not covered; latency 0.8–3.3 s. One in-scope question was answered "not covered" because retrieval missed the setup chunks of the right page, a retrieval gap rather than a model fault. `gpt-5.6-terra` and a `gpt-5-mini` baseline were not run side by side, so the quality and cost comparison with them is by list price only.
 
 ## Stage 1 – Clean (`raw/` → `database/knowledge-base/cleaned/<stem>.md`)
 
@@ -123,5 +123,5 @@ Sources: [Gradio dev app](https://github.com/MikeTestor/navigate_helper/issues/1
 | Chunk metadata in Chroma | Scalar-only metadata in Chroma, full Chunk from the JSON | Chroma can't store `{title, page_file}` objects |
 | Folder `chuncked` | `chunked` | Typo |
 | 622 pages | 619 `.htm` files, 617 cleaned | `index.htm` and `rhair_fbody.htm` are skipped |
-| `gpt-5-mini` as default | Still the default, with a successor follow-up | Removed from the API on 2026-12-11 |
+| `gpt-5-mini` as default | `gpt-5.4-mini` | `gpt-5-mini` is removed from the API on 2026-12-11 |
 | Debug panel and Page viewer sketched | Layout A, with radio list, gallery, open full page | Prototype reviewed |

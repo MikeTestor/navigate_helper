@@ -395,7 +395,7 @@ def test_choosing_a_provider_offers_its_models_and_selects_its_default(config):
     assert update["choices"] == list(PROVIDER_MODELS["anthropic"]) and update["value"] == "claude-sonnet-5-5"
     env = load_config({"LLM_PROVIDER": "anthropic", "LLM_MODEL": "claude-haiku-5-5"})
     assert ui.models_for(env, "anthropic")["value"] == "claude-haiku-5-5"  # the env default for the default provider
-    assert ui.models_for(env, "openai")["value"] == "gpt-5-mini"
+    assert ui.models_for(env, "openai")["value"] == "gpt-5.4-mini"
 
 
 def test_the_app_has_provider_and_model_dropdowns_with_the_env_defaults(tmp_path):
@@ -430,5 +430,5 @@ def test_submitting_uses_the_provider_and_model_chosen_in_the_dropdowns(config):
     submit.fn("vraag", "anthropic", "claude-haiku-5-5", [ui.Conversation()], 0, 0)
     assert (assistant.llms[0].provider, assistant.llms[0].model) == ("anthropic", "claude-haiku-5-5")
     chats = [ui.Conversation()]
-    *_, rows, notes, chats_out, _ = submit.fn("nog een", "anthropic", "gpt-5-mini", chats, 0, 0)  # a forged combination
+    *_, rows, notes, chats_out, _ = submit.fn("nog een", "anthropic", "gpt-5.4-mini", chats, 0, 0)  # a forged combination
     assert len(assistant.llms) == 1 and "allowlist" in chats_out[0].history[-1]["content"]
