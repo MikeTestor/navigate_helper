@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse
 from navigate_helper.ask import ManualAnswer, build_assistant
 from navigate_helper.code_answer import CodeAnswer, format_citations, format_code_answer
 from navigate_helper.code_check import CodeChecker, build_code_checker, stream_check
-from navigate_helper.config import DEFAULT_LLM_MODELS, PROVIDERS, Config, allowed_models, load_config
+from navigate_helper.config import Config, allowed_models, available_providers, load_config
 from navigate_helper.llm import LLMSwitch
 from navigate_helper.page_view import FULL_PAGE_PREFIX, page_viewer, resolve_image, served_page
 
@@ -447,7 +447,7 @@ def keep_viewer_when_unselected(show):
 
 def models_for(config: Config, provider: str):
     """The model dropdown for a provider: its allowlist, with the `.env` model (default provider) or the first selected."""
-    value = config.llm_model if provider == config.llm_provider else DEFAULT_LLM_MODELS[provider]
+    value = config.llm_model if provider == config.llm_provider else allowed_models(config, provider)[0]
     return gr.update(choices=list(allowed_models(config, provider)), value=value)
 
 
@@ -500,7 +500,7 @@ def chat_blocks(
                 clear_links = gr.Button("Wis lijst", size="sm")
                 with gr.Row():
                     provider = gr.Dropdown(
-                        choices=list(PROVIDERS), value=config.llm_provider, label="Provider", allow_custom_value=False
+                        choices=list(available_providers(config)), value=config.llm_provider, label="Provider", allow_custom_value=False
                     )
                     model = gr.Dropdown(
                         choices=list(allowed_models(config, config.llm_provider)), value=config.llm_model,

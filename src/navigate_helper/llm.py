@@ -73,18 +73,21 @@ class OpenAILLM:
     provider = "openai"
 
     def __init__(self, config: Config):
+        self.model = config.llm_model
+        self._chat = self._client(config)
+        self._chain = self._structured(LLMAnswer)
+        self._other_chains: dict[type[BaseModel], Any] = {}
+
+    @staticmethod
+    def _client(config: Config):
         from langchain_openai import ChatOpenAI
 
-        self.model = config.llm_model
-        chat = ChatOpenAI(
+        return ChatOpenAI(
             model=config.llm_model,
             api_key=config.require_api_key(),
             reasoning_effort=config.llm_reasoning_effort,
             max_completion_tokens=MAX_COMPLETION_TOKENS,
         )
-        self._chat = chat
-        self._chain = self._structured(LLMAnswer)
-        self._other_chains: dict[type[BaseModel], Any] = {}
 
     def _structured(self, schema):
         return self._chat.with_structured_output(schema, method="json_schema", strict=True, include_raw=True)
@@ -111,6 +114,31 @@ class OpenAILLM:
             raise LLMError(f"the model refused: {raw.additional_kwargs['refusal']}")
         if (getattr(raw, "response_metadata", None) or {}).get("finish_reason") == "length":
             raise LLMError(f"the answer was cut off at {MAX_COMPLETION_TOKENS} completion tokens")
+
+
+class LocalLLM(OpenAILLM):
+    """An OpenAI-compatible server on this machine (Ollama), for development without a cloud key.
+
+    The same client as `OpenAILLM`, pointed at `config.local_llm_url` (always loopback, see `load_config`). Nothing
+    OpenAI-specific is sent: no reasoning effort, and JSON-schema output that is not `strict`. Code sent here never
+    leaves the PC, so the code gate does not apply to this provider.
+    """
+
+    provider = "local"
+
+    @staticmethod
+    def _client(config: Config):
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(
+            model=config.llm_model,
+            base_url=config.local_llm_url,
+            api_key=config.require_api_key(),
+            max_completion_tokens=MAX_COMPLETION_TOKENS,
+        )
+
+    def _structured(self, schema):
+        return self._chat.with_structured_output(schema, method="json_schema", include_raw=True)
 
 
 class AnthropicLLM:
@@ -156,7 +184,8 @@ class AnthropicLLM:
 
 def build_llm(config: Config):
     """The adapter for `config.llm_provider`. Raises `MissingConfigError` without that provider's API key."""
-    return AnthropicLLM(config) if config.llm_provider == "anthropic" else OpenAILLM(config)
+    adapters = {"anthropic": AnthropicLLM, "local": LocalLLM}
+    return adapters.get(config.llm_provider, OpenAILLM)(config)
 
 
 class LLMSwitch:
