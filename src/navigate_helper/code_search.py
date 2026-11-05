@@ -96,6 +96,18 @@ class ToolCallRecord:
     ok: bool
     result_chars: int
 
+    def describe(self) -> str:
+        """One plain line: the tool name and its argument values, as in `grep Invoice src`."""
+        return " ".join([self.name, *(str(value) for value in self.args.values())])
+
+
+@dataclass(frozen=True)
+class ProgressEvent:
+    """One line of a run's progress. `kind` is started, tool_call or writing; `text` is for a human (Dutch)."""
+
+    kind: str
+    text: str
+
 
 @dataclass
 class CodeSearchResult:
@@ -114,6 +126,20 @@ class CodeSearchResult:
     provider: str = ""
     model: str = ""
     error: str | None = None
+
+
+def _emitter(on_event):
+    """`on_event` made safe: a callback that raises must not stop the search."""
+
+    def emit(event: ProgressEvent) -> None:
+        if on_event is None:
+            return
+        try:
+            on_event(event)
+        except Exception:
+            pass
+
+    return emit
 
 
 class CodeSearch:
@@ -144,11 +170,13 @@ class CodeSearch:
         manual_answer: str | None = None,
         manual_pages: list[str] | None = None,
         cancelled: Callable[[], bool] = lambda: False,
+        on_event: Callable[[ProgressEvent], None] | None = None,
     ) -> CodeSearchResult:
+        """Run the search. `on_event` is called with a `ProgressEvent` as the run proceeds; its problems are ignored."""
         started = self._clock()
         result = CodeSearchResult(question, "finished", None, provider=self._llm.provider, model=self._llm.model)
         try:
-            self._loop(result, started, question, manual_answer, manual_pages or [], cancelled)
+            self._loop(result, started, question, manual_answer, manual_pages or [], cancelled, _emitter(on_event))
         except Exception as error:  # LLM refusal, truncation, API errors: a partial result, not a crash
             result.status, result.conclusion, result.error = "error", None, f"{type(error).__name__}: {error}"
         result.elapsed_seconds = self._clock() - started
@@ -156,13 +184,14 @@ class CodeSearch:
             self._log.write({"kind": "code_search", **asdict(result)})
         return result
 
-    def _loop(self, result, started, question, manual_answer, manual_pages, cancelled) -> None:
+    def _loop(self, result, started, question, manual_answer, manual_pages, cancelled, emit) -> None:
         human = CODE_SEARCH_TEMPLATE.format(
             question=question,
             manual_answer=manual_answer or NO_MANUAL_ANSWER,
             manual_pages=", ".join(manual_pages) or NO_MANUAL_PAGES,
         )
         messages = [SystemMessage(CODE_SEARCH_PROMPT), HumanMessage(human)]
+        emit(ProgressEvent("started", "Onderzoek gestart"))
         while True:
             stop = self._stop_reason(started, cancelled)
             if stop:
@@ -187,7 +216,9 @@ class CodeSearch:
                     result.status = stop
                     return
                 ok, text = self._call_tool(call.name, call.args)
-                result.tool_calls.append(ToolCallRecord(call.name, call.args, ok, len(text)))
+                record = ToolCallRecord(call.name, call.args, ok, len(text))
+                result.tool_calls.append(record)
+                emit(ProgressEvent("tool_call", record.describe() + ("" if ok else " (mislukt)")))
                 messages.append(ToolMessage(content=text, tool_call_id=call.id))
 
     def _stop_reason(self, started: float, cancelled: Callable[[], bool]) -> str | None:

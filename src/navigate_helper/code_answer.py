@@ -255,10 +255,7 @@ def format_code_answer(answer: CodeAnswer) -> str:
     if answer.dropped_citations:
         lines += ["", f"[{len(answer.dropped_citations)} verwijzing(en) weggelaten: de regels bestaan niet in de code]"]
     if answer.status not in (ANSWERED, UNSTRUCTURED) and answer.tool_calls:
-        lines += ["", "Onderzocht:"] + [f"- {call.name} {_args(call)}" for call in answer.tool_calls]
+        lines += ["", "Onderzocht:"] + [f"- {call.describe()}" for call in answer.tool_calls]
     lines += ["", "Niet gecontroleerd: " + ", ".join(answer.not_checked)]
     return "\n".join(lines)
 
-
-def _args(call: ToolCallRecord) -> str:
-    return " ".join(str(value) for value in call.args.values())
