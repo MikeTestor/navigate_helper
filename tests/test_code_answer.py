@@ -266,3 +266,40 @@ def test_format_of_a_partial_answer_lists_the_evidence_and_says_unstructured_cit
     unstructured = format_code_answer(write(writer(tools, error=LLMError("x"))[0]))
     assert CONCLUSION in unstructured and "bronverwijzingen" in unstructured
     assert "bronverwijzingen" not in format_code_answer(write(writer(tools)[0]))
+
+
+# --- showing it in the GUI: Markdown, citations in their own view ------------------------------------
+
+
+def test_snippets_are_fenced_so_markdown_shows_them_as_code(tools):
+    text = format_code_answer(write(writer(tools)[0]))
+    assert "```\norder line 2\norder line 3\n```" in text
+
+
+def test_a_snippet_that_contains_a_fence_gets_a_longer_one(tools):
+    (tools._root / "src" / "doc.md").write_text("```\ncode\n```\n", encoding="utf-8")
+    sut, _ = writer(tools, structured(citations=[("src/doc.md", 1, 3)]))
+    assert "````\n```\ncode\n```\n````" in format_code_answer(write(sut))
+
+
+def test_the_chat_version_can_leave_the_snippets_to_the_citation_view(tools):
+    answer = write(writer(tools)[0])
+    chat = format_code_answer(answer, snippets=False)
+    assert "src/order.p:2-3" in chat and "order line 2" not in chat and "```" not in chat
+    assert "De code controleert de factuur." in chat and "code per 2026-10-30" in chat
+
+
+def test_the_citation_view_lists_each_range_with_its_snippet(tools):
+    from navigate_helper.code_answer import format_citations
+
+    sut, _ = writer(tools, structured(citations=[("src/order.p", 2, 3), ("src/big.p", 1, 30)]))
+    view = format_citations(write(sut))
+    assert "**src/order.p:2-3**" in view and "order line 3" in view
+    assert "**src/big.p:1-30**" in view and "big line 20" in view and "big line 21" not in view and "[...]" in view
+    assert "code per 2026-10-30" in view
+
+
+def test_the_citation_view_says_so_when_there_are_none(tools):
+    from navigate_helper.code_answer import format_citations
+
+    assert "Geen bronverwijzingen" in format_citations(write(writer(tools)[0], CodeSearchResult("v", "timeout", None)))
