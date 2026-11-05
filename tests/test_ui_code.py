@@ -199,8 +199,9 @@ def test_the_app_with_a_code_checkout_has_a_code_tab_a_hidden_stop_button_and_th
 
 
 def test_a_question_through_the_app_gets_the_code_button(config, tmp_path):
-    checker, _ = code_checker(tmp_path)
-    blocks = ui.chat_blocks(FakeAssistant(make_answer(covered=False)), config, checker=checker)
+    checker, llm = code_checker(tmp_path)
+    switch = LLMSwitch(config, lambda c: llm)
+    blocks = ui.chat_blocks(FakeAssistant(make_answer(covered=False)), config, switch, checker=checker)
     provider = next(b for b in blocks.blocks.values() if isinstance(b, gr.Dropdown) and b.label == "Provider")
     submit = next(fn for fn in blocks.fns.values() if provider in fn.inputs and len(fn.inputs) == 6)
     chats = [ui.Conversation()]

@@ -2,6 +2,8 @@
 section "Stages 4 and 5 – Gradio dev app"."""
 
 import os
+import threading
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 import gradio as gr
@@ -10,6 +12,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
 from navigate_helper.ask import ManualAnswer, build_assistant
+from navigate_helper.code_answer import CodeAnswer, format_citations, format_code_answer
+from navigate_helper.code_check import CodeChecker, build_code_checker, stream_check
 from navigate_helper.config import DEFAULT_LLM_MODELS, PROVIDERS, Config, allowed_models, load_config
 from navigate_helper.llm import LLMSwitch
 from navigate_helper.page_view import FULL_PAGE_PREFIX, page_viewer, resolve_image, served_page
@@ -189,35 +193,51 @@ def merge_page_links(shown: list[tuple[str, str]], new: list[tuple[str, str]]) -
     return new + [item for item in shown if item[1] not in new_files]
 
 
-def respond(assistant, config: Config, message: str, history: list[dict], shown=(), pick=None):
+CHECK_OPTION = "controleer-in-de-code"
+CHECK_LABEL = "Controleer in de code"
+
+
+def code_option() -> list[dict]:
+    """The button under a Manual Answer: Gradio shows a message's options under the latest message of the chat."""
+    return [{"label": CHECK_LABEL, "value": CHECK_OPTION}]
+
+
+def respond(assistant, config: Config, message: str, history: list[dict], shown=(), pick=None, offer_code=False):
     """One chat turn: returns (history, textbox, page link radio, gallery, large screenshot, debug rows, debug notes,
     shown links).
 
     `pick()` returns the LLM chosen in the provider and model dropdowns for this question; a refused or unavailable
-    choice (no API key) is reported in the chat like any other error.
+    choice (no API key) is reported in the chat like any other error. `offer_code` puts the "check against the code"
+    button under the Answer.
     """
+    return respond_with_answer(assistant, config, message, history, shown, pick, offer_code)[0]
+
+
+def respond_with_answer(assistant, config: Config, message: str, history: list[dict], shown=(), pick=None, offer_code=False):
+    """`respond`, plus the `ManualAnswer` it showed (None for a blank or failed question): `(outputs, answer)`."""
     shown = list(shown)
     if not message.strip():
-        return history, message, *(gr.update() for _ in range(5)), shown
+        return (history, message, *(gr.update() for _ in range(5)), shown), None
     first_question = not history
     history = history + [{"role": "user", "content": message}]
     try:
         answer = assistant.ask(message, llm=pick() if pick else None)
     except Exception as error:  # retrieval and config errors raise from ask, and from an unavailable choice
         history.append({"role": "assistant", "content": f"Er ging iets mis: {type(error).__name__}: {error}"})
-        return history, "", gr.update(), [], large_screenshot(None), [], f"**error:** {error}", shown
+        return (history, "", gr.update(), [], large_screenshot(None), [], f"**error:** {error}", shown), None
     view = answer_view(answer, config)
-    history.append({"role": "assistant", "content": answer.text})
+    history.append({"role": "assistant", "content": answer.text, **({"options": code_option()} if offer_code else {})})
     shown = merge_page_links(shown, view.page_link_choices)
     radio = {"choices": shown, "visible": bool(shown)}
     if first_question and view.page_link_choices:
         # Only the first Answer preselects a page (which loads the viewer); later Answers leave the viewer alone.
         radio["value"] = view.page_link_choices[0][1]
     first_shot = view.gallery[0] if view.gallery else None  # section 2 of the Screenshots tab starts on the first
-    return (
+    outputs = (
         history, "", gr.update(**radio), view.gallery, large_screenshot(first_shot), view.debug_rows, view.debug_notes,
         shown,
     )
+    return outputs, answer
 
 
 def large_screenshot(shot: tuple[str, str] | None):
@@ -243,6 +263,13 @@ class Conversation:
     large: object = field(default_factory=lambda: large_screenshot(None))
     rows: list = field(default_factory=list)
     notes: str = ""
+    # The Code path: the latest Manual Answer (what the check button checks), whether the check starts by itself,
+    # the Code Citation view, and the run in progress (`stop` is set by the Stop button).
+    last_manual: ManualAnswer | None = None
+    auto_check: bool = False
+    code_view: str = ""
+    checking: bool = False
+    stop: threading.Event | None = None
 
 
 TAB_TITLE_CHARS = 24
@@ -260,9 +287,9 @@ def tab_labels(chats: list[Conversation]) -> list[str]:
 
 
 def chat_view(chat: Conversation):
-    """What to put in (chat, Page Links, gallery, large screenshot, Debug table, Debug notes) for a conversation."""
+    """What to put in (chat, Page Links, gallery, large screenshot, Debug table, Debug notes, Code view) for a conversation."""
     links = gr.update(choices=chat.shown, value=None, visible=bool(chat.shown))
-    return chat.history, links, chat.gallery, chat.large, chat.rows, chat.notes
+    return chat.history, links, chat.gallery, chat.large, chat.rows, chat.notes, chat.code_view
 
 
 def new_chat(chats: list[Conversation]):
@@ -293,18 +320,25 @@ def switch_chat(chats: list[Conversation], index: int):
     return (index, *chat_view(chats[index]))
 
 
-def submit(assistant, config: Config, message: str, chats: list[Conversation], active: int, revision: int, pick=None):
+def submit(
+    assistant, config: Config, message: str, chats: list[Conversation], active: int, revision: int, pick=None,
+    offer_code=False,
+):
     """One turn in the active conversation: the `respond` outputs, the updated conversations and tab revision.
 
-    The revision goes up when a tab gets its name (the first question), so the tab strip redraws.
+    The revision goes up when a tab gets its name (the first question), so the tab strip redraws. With `offer_code`
+    (there is a Code Checkout) a Manual Answer that says "not in the Manual" starts the Code check by itself.
     """
     chat = chats[active]
-    history, box, links, gallery, large, rows, notes, shown = respond(
-        assistant, config, message, chat.history, chat.shown, pick
+    (history, box, links, gallery, large, rows, notes, shown), answer = respond_with_answer(
+        assistant, config, message, chat.history, chat.shown, pick, offer_code
     )
     if message.strip():
         chat.history, chat.shown = history, shown
         chat.gallery, chat.large, chat.rows, chat.notes = gallery, large, rows, notes
+        if answer is not None:
+            chat.last_manual = answer
+            chat.auto_check = offer_code and not answer.covered and answer.error is None
         if not chat.title:
             chat.title = message.strip()
             revision += 1
@@ -314,6 +348,92 @@ def submit(assistant, config: Config, message: str, chats: list[Conversation], a
 def clear_page_links(chats: list[Conversation], active: int):
     chats[active].shown = []
     return gr.update(choices=[], value=None, visible=False), chats
+
+
+PROGRESS_TITLE = "Code-onderzoek"
+
+
+def busy(chats: list[Conversation]) -> bool:
+    """A Code check is running: the tab strip is frozen, because its updates would land in the wrong conversation."""
+    return any(chat.checking for chat in chats)
+
+
+def without_options(message: dict) -> dict:
+    return {key: value for key, value in message.items() if key != "options"}
+
+
+def check_code(chat: Conversation, checker: CodeChecker | None, pick) -> Iterator[None]:
+    """Check the conversation's latest Manual Answer against the code, updating `chat` in place.
+
+    Yields after every change (progress line, answer) so the caller can redraw. The history gets a collapsible
+    progress block (the tool calls, as they happen) and then the labelled Code Answer below the Manual Answer; the
+    citations go to `chat.code_view`. A refused provider or unavailable choice ends as a chat message with the button
+    back. Stop (`chat.stop`) ends the search early with a partial Code Answer.
+    """
+    manual = chat.last_manual
+    if checker is None or manual is None or chat.checking:
+        return
+    chat.checking, chat.stop, chat.auto_check = True, threading.Event(), False
+    progress = {"role": "assistant", "content": "", "metadata": {"title": PROGRESS_TITLE, "status": "pending"}}
+    chat.history = [without_options(m) for m in chat.history] + [progress]
+    lines: list[str] = []
+    answer: CodeAnswer | None = None
+    yield
+    try:
+        for item in stream_check(checker, manual, pick(), chat.stop.is_set):
+            if isinstance(item, CodeAnswer):
+                answer = item
+                continue
+            lines.append(item.text)
+            progress["content"] = "\n".join(f"- {line}" for line in lines)
+            yield
+    except Exception as error:  # a refused provider (OpenAI without approval), no API key, a crashed run
+        chat.history = [m for m in chat.history if m is not progress or lines]
+        if lines:
+            progress["metadata"]["status"] = "done"
+        message = f"Het code-onderzoek is niet gelukt: {type(error).__name__}: {error}"
+        chat.history = chat.history + [{"role": "assistant", "content": message, "options": code_option()}]
+    else:
+        steps = sum(1 for line in lines if line != "Onderzoek gestart" and line != "Antwoord opstellen")
+        progress["metadata"] = {"title": f"{PROGRESS_TITLE}: {steps} {'stap' if steps == 1 else 'stappen'}", "status": "done"}
+        chat.history = chat.history + [{"role": "assistant", "content": format_code_answer(answer, snippets=False)}]
+        chat.code_view = format_citations(answer)
+    finally:
+        chat.checking, chat.stop = False, None
+    yield
+
+
+def stop_check(chats: list[Conversation], active: int) -> None:
+    """The Stop button: ask the running search to end; it still finishes with a partial Code Answer."""
+    stop = chats[active].stop
+    if stop is not None:
+        stop.set()
+
+
+def code_outputs(chat: Conversation, chats: list[Conversation]):
+    """(chat, question box, Stop button, Code view, chats) after a step of a Code check."""
+    return (
+        chat.history, gr.update(interactive=not chat.checking), gr.update(visible=chat.checking), chat.code_view, chats,
+    )
+
+
+def run_check(checker, switch: LLMSwitch, chats: list[Conversation], active: int, provider: str, model: str):
+    """The Gradio handler of the check button: `check_code` for the active conversation, one output set per step."""
+    chat = chats[active]
+    yielded = False
+    for _ in check_code(chat, checker, lambda: switch.get(provider, model)):
+        yielded = True
+        yield code_outputs(chat, chats)
+    if not yielded:  # nothing to check: leave the page as it is
+        yield (gr.update(), gr.update(), gr.update(), gr.update(), chats)
+
+
+def auto_check(checker, switch: LLMSwitch, chats: list[Conversation], active: int, provider: str, model: str):
+    """Runs after every question: the check starts by itself only when the Manual Answer was "not covered"."""
+    if chats[active].auto_check:
+        yield from run_check(checker, switch, chats, active, provider, model)
+    else:
+        yield (gr.update(), gr.update(), gr.update(), gr.update(), chats)
 
 
 def keep_viewer_when_unselected(show):
@@ -331,13 +451,17 @@ def models_for(config: Config, provider: str):
     return gr.update(choices=list(allowed_models(config, provider)), value=value)
 
 
-def chat_blocks(assistant, config: Config, switch: LLMSwitch | None = None) -> gr.Blocks:
-    """Chat on the left, tabs (Manual page, Markdown page, Debug) on the right.
+def chat_blocks(
+    assistant, config: Config, switch: LLMSwitch | None = None, checker: CodeChecker | None = None
+) -> gr.Blocks:
+    """Chat on the left, tabs (Manual page, Markdown page, Debug, Screenshots, and Code) on the right.
 
     `switch` builds the adapter for the provider and model chosen in the dropdowns; by default it starts from
-    the assistant's own LLM.
+    the assistant's own LLM. With a `checker` (there is a Code Checkout) every Manual Answer gets the "check against
+    the code" button, and the Code tab and the Stop button appear; without one the app is as it was.
     """
     switch = switch or LLMSwitch(config, seed=getattr(assistant, "llm", None))
+    skip_tab = lambda count: tuple(gr.update() for _ in range(count))  # noqa: E731  a tab click while a check runs
     with gr.Blocks(title="Navigate Helper") as blocks:
         chats = gr.State([Conversation()])
         active = gr.State(0)
@@ -355,16 +479,20 @@ def chat_blocks(assistant, config: Config, switch: LLMSwitch | None = None) -> g
                                 title = gr.Button(label, size="sm", scale=0, min_width=0, elem_classes=["chat-tab-title"])
                                 close = gr.Button("×", size="sm", scale=0, min_width=0, elem_classes=["chat-tab-close"])
                             title.click(
-                                lambda chats, rev, index=index: (*switch_chat(chats, index), rev + 1),
+                                lambda chats, rev, index=index: (
+                                    skip_tab(len(view) + 2) if busy(chats) else (*switch_chat(chats, index), rev + 1)
+                                ),
                                 [chats, revision], [active, *view, revision],
                             ).then(**focus)
                             close.click(
-                                lambda chats, active, rev, index=index: (*close_chat(chats, active, index), rev + 1),
+                                lambda chats, active, rev, index=index: (
+                                    skip_tab(len(view) + 3) if busy(chats) else (*close_chat(chats, active, index), rev + 1)
+                                ),
                                 [chats, active, revision], [chats, active, *view, revision],
                             ).then(**focus)
                         plus = gr.Button("+", size="sm", scale=0, min_width=44)
                         plus.click(
-                            lambda chats, rev: (*new_chat(chats), rev + 1),
+                            lambda chats, rev: skip_tab(len(view) + 3) if busy(chats) else (*new_chat(chats), rev + 1),
                             [chats, revision], [chats, active, *view, revision],
                         ).then(**focus)
                 chat = gr.Chatbot(elem_id=CHAT_ID, autoscroll=False)
@@ -378,6 +506,7 @@ def chat_blocks(assistant, config: Config, switch: LLMSwitch | None = None) -> g
                         choices=list(allowed_models(config, config.llm_provider)), value=config.llm_model,
                         label="Model", allow_custom_value=False,
                     )
+                stop = gr.Button("Stop", visible=False, variant="stop", size="sm") if checker else None
                 box = gr.Textbox(placeholder="Stel een vraag", show_label=False, elem_id=QUESTION_ID, autofocus=True)
             with gr.Column(scale=3):
                 viewer_outputs, show, tabs = build_page_viewer(config, links)
@@ -390,16 +519,35 @@ def chat_blocks(assistant, config: Config, switch: LLMSwitch | None = None) -> g
                 with tabs, gr.Tab("Screenshots"):
                     gallery = gr.Gallery(label="Alle screenshots", columns=4, height=220, allow_preview=False)
                     large = gr.Image(label="Screenshot", interactive=False)
-        view = [chat, links, gallery, large, table, notes]
+                if checker:
+                    with tabs, gr.Tab("Code"):
+                        code_view = gr.Markdown()
+                else:
+                    code_view = gr.Markdown(visible=False)  # keeps `view` the same shape; there is nothing to show
+        view = [chat, links, gallery, large, table, notes, code_view]
 
         provider.change(lambda name: models_for(config, name), provider, model)
-        box.submit(
+        asked = box.submit(
             lambda message, name, choice, chats, active, rev: submit(
-                assistant, config, message, chats, active, rev, pick=lambda: switch.get(name, choice)
+                assistant, config, message, chats, active, rev, pick=lambda: switch.get(name, choice),
+                offer_code=checker is not None,
             ),
             [box, provider, model, chats, active, revision],
             [chat, box, links, gallery, large, table, notes, chats, revision],
-        ).then(None, None, None, js=SCROLL_TO_QUESTION_JS)
+        )
+        asked.then(None, None, None, js=SCROLL_TO_QUESTION_JS)
+        if checker:
+            check_inputs = [provider, model, chats, active]
+            check_outputs = [chat, box, stop, code_view, chats]
+            asked.then(
+                lambda name, choice, chats, active: auto_check(checker, switch, chats, active, name, choice),
+                check_inputs, check_outputs,
+            ).then(None, None, None, js=SCROLL_TO_QUESTION_JS)
+            chat.option_select(
+                lambda name, choice, chats, active: run_check(checker, switch, chats, active, name, choice),
+                check_inputs, check_outputs,
+            ).then(None, None, None, js=SCROLL_TO_QUESTION_JS)
+            stop.click(stop_check, [chats, active], None, queue=False)
         gallery.select(select_screenshot, None, large)
         clear_links.click(clear_page_links, [chats, active], [links, chats])
         links.change(keep_viewer_when_unselected(show), links, list(viewer_outputs))
@@ -431,7 +579,8 @@ def serve(blocks: gr.Blocks, config: Config, **launch_args) -> None:
 
 def run(config: Config) -> None:
     assistant = build_assistant(config)  # once, at startup (slow: loads the e5 model)
-    serve(chat_blocks(assistant, config), config, js=APP_JS, css=CHAT_CSS)
+    checker = build_code_checker(config)  # None without CODE_DIR; the "code per" date is taken here, at startup
+    serve(chat_blocks(assistant, config, checker=checker), config, js=APP_JS, css=CHAT_CSS)
 
 
 if __name__ == "__main__":
