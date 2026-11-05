@@ -3,7 +3,7 @@ import pytest
 
 from navigate_helper import ui
 from navigate_helper.ask import ManualAnswer, ScoredChunk
-from navigate_helper.config import load_config
+from navigate_helper.config import PROVIDER_MODELS, MissingConfigError, load_config
 
 
 def chunk(chunk_id, page_file="Budgetten.htm", title="Budgetten", score=0.9, cited=False, screenshots=(), links=()):
@@ -92,10 +92,11 @@ def test_uncovered_answer_offers_the_closest_pages_as_links(config):
 
 class FakeAssistant:
     def __init__(self, answer=None, error=None):
-        self.answer, self.error, self.questions = answer, error, []
+        self.answer, self.error, self.questions, self.llms = answer, error, [], []
 
-    def ask(self, question):
+    def ask(self, question, llm=None):
         self.questions.append(question)
+        self.llms.append(llm)
         if self.error:
             raise self.error
         return self.answer
@@ -353,3 +354,81 @@ def test_serve_listens_on_localhost_unless_a_host_is_configured(monkeypatch, con
     monkeypatch.setenv("GRADIO_SERVER_NAME", "0.0.0.0")
     ui.serve("blocks", config)
     assert ran["host"] == "0.0.0.0"
+
+
+# --- the provider and model dropdowns ------------------------------------------------------------
+
+
+def test_debug_notes_show_the_provider_and_model_of_the_answer(config):
+    view = ui.answer_view(make_answer(provider="anthropic", model="claude-sonnet-5-5", dropped_citation_ids=[]), config)
+    assert "anthropic" in view.debug_notes and "claude-sonnet-5-5" in view.debug_notes
+    assert "anthropic" not in ui.answer_view(make_answer(dropped_citation_ids=[]), config).debug_notes  # none recorded
+
+
+def test_the_chosen_llm_is_passed_to_the_next_question(config):
+    assistant, chosen = FakeAssistant(make_answer()), object()
+    ui.respond(assistant, config, "vraag", [], pick=lambda: chosen)
+    assert assistant.llms == [chosen]
+
+
+def test_without_a_choice_the_assistant_uses_its_own_llm(config):
+    assistant = FakeAssistant(make_answer())
+    ui.respond(assistant, config, "vraag", [])
+    assert assistant.llms == [None]
+
+
+def test_a_refused_or_unavailable_choice_is_reported_in_the_chat_and_asks_nothing(config):
+    def refuse():
+        raise MissingConfigError("ANTHROPIC_API_KEY is not set (put it in .env).")
+
+    assistant = FakeAssistant(make_answer())
+    history, _, _, _, _, rows, notes, shown = ui.respond(assistant, config, "vraag", [], ["x"], pick=refuse)
+    assert assistant.questions == [] and "ANTHROPIC_API_KEY" in history[-1]["content"] and "ANTHROPIC_API_KEY" in notes
+
+
+def test_a_blank_question_does_not_resolve_the_choice(config):
+    ui.respond(FakeAssistant(make_answer()), config, "  ", [], pick=lambda: pytest.fail("must not be called"))
+
+
+def test_choosing_a_provider_offers_its_models_and_selects_its_default(config):
+    update = ui.models_for(config, "anthropic")
+    assert update["choices"] == list(PROVIDER_MODELS["anthropic"]) and update["value"] == "claude-sonnet-5-5"
+    env = load_config({"LLM_PROVIDER": "anthropic", "LLM_MODEL": "claude-haiku-5-5"})
+    assert ui.models_for(env, "anthropic")["value"] == "claude-haiku-5-5"  # the env default for the default provider
+    assert ui.models_for(env, "openai")["value"] == "gpt-5-mini"
+
+
+def test_the_app_has_provider_and_model_dropdowns_with_the_env_defaults(tmp_path):
+    cfg = load_config({"DATA_DIR": str(tmp_path), "LLM_PROVIDER": "anthropic", "LLM_MODEL": "claude-haiku-5-5"})
+    blocks = ui.chat_blocks(FakeAssistant(make_answer()), cfg)
+    drops = {b.label: b for b in blocks.blocks.values() if isinstance(b, gr.Dropdown)}
+    provider, model = drops["Provider"], drops["Model"]
+    assert [c[0] for c in provider.choices] == ["openai", "anthropic"] and provider.value == "anthropic"
+    assert [c[0] for c in model.choices] == list(PROVIDER_MODELS["anthropic"]) and model.value == "claude-haiku-5-5"
+    assert provider.allow_custom_value is False and model.allow_custom_value is False  # an allowlist, not free text
+
+
+def test_changing_the_provider_updates_the_model_dropdown(config):
+    blocks = ui.chat_blocks(FakeAssistant(make_answer()), config)
+    provider = next(b for b in blocks.blocks.values() if isinstance(b, gr.Dropdown) and b.label == "Provider")
+    model = next(b for b in blocks.blocks.values() if isinstance(b, gr.Dropdown) and b.label == "Model")
+    assert any(
+        fn.targets[0][1] == "change" and fn.targets[0][0] == provider._id and [o._id for o in fn.outputs] == [model._id]
+        for fn in blocks.fns.values()
+    )
+
+
+def test_submitting_uses_the_provider_and_model_chosen_in_the_dropdowns(config):
+    from navigate_helper.llm import LLMSwitch
+    from tests.fakes import FakeLLM
+
+    assistant = FakeAssistant(make_answer())
+    switch = LLMSwitch(config, lambda c: FakeLLM(provider=c.llm_provider, model=c.llm_model))
+    blocks = ui.chat_blocks(assistant, config, switch)
+    provider = next(b for b in blocks.blocks.values() if isinstance(b, gr.Dropdown) and b.label == "Provider")
+    submit = next(fn for fn in blocks.fns.values() if provider in fn.inputs and len(fn.inputs) == 6)
+    submit.fn("vraag", "anthropic", "claude-haiku-5-5", [ui.Conversation()], 0, 0)
+    assert (assistant.llms[0].provider, assistant.llms[0].model) == ("anthropic", "claude-haiku-5-5")
+    chats = [ui.Conversation()]
+    *_, rows, notes, chats_out, _ = submit.fn("nog een", "anthropic", "gpt-5-mini", chats, 0, 0)  # a forged combination
+    assert len(assistant.llms) == 1 and "allowlist" in chats_out[0].history[-1]["content"]
