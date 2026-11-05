@@ -81,7 +81,7 @@ The assistant's Dutch reply to an Asker's question, written only from Retrieved 
 _Avoid_: Response, reply
 
 **Code Answer**:
-The assistant's Dutch reply to an Asker's question, written from a Code Search. It carries Code Citations, says whether it agrees with the Manual Answer, states what it could not check, shows the newest modification date of the Code Checkout ("code per <date>"), and is labelled unverified. Identifiers and code stay as written. A Code Search that stopped early (limit, cancelled, error) gives a partial Code Answer: what was examined, never a conclusion.
+The assistant's Dutch reply to an Asker's question, written from a Code Search. It carries Code Citations, says whether it agrees with the Manual Answer, states what it could not check, shows the newest modification date of the Code Checkout ("code per <date>"), and is labelled unverified. Identifiers and code stay as written. A Code Search that stopped early (limit, cancelled, error) or that never successfully read any code gives a partial Code Answer: what was examined, never a conclusion. A Code Answer with no valid Code Citation says so and makes no claim about the Manual Answer.
 _Avoid_: Developer answer, technical answer
 
 **Retrieved Chunk**:

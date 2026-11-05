@@ -303,3 +303,56 @@ def test_the_citation_view_says_so_when_there_are_none(tools):
     from navigate_helper.code_answer import format_citations
 
     assert "Geen bronverwijzingen" in format_citations(write(writer(tools)[0], CodeSearchResult("v", "timeout", None)))
+
+
+# --- an answer needs evidence from the code -----------------------------------------------------------
+
+
+@pytest.mark.parametrize("calls", [
+    [],                                                        # the model never used a tool
+    [ToolCallRecord("list", {"path": "nope"}, False, 64)],     # every tool call failed (the llama3.2 case)
+])
+def test_a_finished_run_that_read_no_code_is_a_partial_answer_not_a_conclusion(tools, calls):
+    sut, llm = writer(tools)
+    answer = write(sut, CodeSearchResult("Hoe werkt facturen?", "finished", CONCLUSION, tool_calls=calls))
+    assert llm.prompts == []  # the model's text is not turned into an Answer
+    assert answer.status == "no_evidence" and answer.citations == [] and answer.uncited is False
+    assert "geen code gelezen" in answer.text and "geen conclusie" in answer.text and CONCLUSION not in answer.text
+    assert answer.manual_agreement == "unknown" and answer.tool_calls == calls and answer.not_checked[:3] == list(ALWAYS_NOT_CHECKED)
+
+
+def test_one_successful_tool_call_is_enough_to_go_on_to_the_structuring_step(tools):
+    sut, llm = writer(tools)
+    calls = [ToolCallRecord("list", {"path": "nope"}, False, 64), ToolCallRecord("grep", {"pattern": "x"}, True, 12)]
+    assert write(sut, CodeSearchResult("v", "finished", CONCLUSION, tool_calls=calls)).status == "answered"
+    assert len(llm.prompts) == 1
+
+
+def test_the_partial_notice_for_no_evidence_lists_what_was_tried(tools):
+    calls = [ToolCallRecord("list", {"path": "nope"}, False, 64)]
+    text = format_code_answer(write(writer(tools)[0], CodeSearchResult("v", "finished", CONCLUSION, tool_calls=calls)))
+    assert "ongecontroleerd" in text.lower() and "list nope" in text and CONCLUSION not in text
+
+
+def test_an_answer_whose_citations_all_dropped_cannot_claim_the_code_agrees_or_differs(tools):
+    sut, _ = writer(tools, structured(citations=[("src/missing.p", 1, 2)], manual_agreement="agrees"))
+    answer = write(sut)
+    assert answer.status == "answered" and answer.citations == [] and answer.manual_agreement == "unknown"
+    sut, _ = writer(tools, structured(citations=[], manual_agreement="differs", differing_manual_pages=["Facturen.htm"]))
+    answer = write(sut)
+    assert answer.manual_agreement == "unknown" and answer.differing_manual_pages == []
+
+
+def test_with_a_valid_citation_the_verdict_is_kept(tools):
+    assert write(writer(tools, structured(manual_agreement="differs", differing_manual_pages=["Facturen.htm"]))[0]).manual_agreement == "differs"
+
+
+def test_without_a_manual_answer_the_verdict_stays_no_manual_answer_even_when_uncited(tools):
+    sut, _ = writer(tools, structured(citations=[], manual_agreement="agrees"))
+    assert write(sut, manual_answer=None, manual_pages=None).manual_agreement == "no_manual_answer"
+
+
+def test_an_uncited_answer_is_shown_with_a_warning_and_a_cited_one_is_not(tools):
+    uncited = format_code_answer(write(writer(tools, structured(citations=[]))[0]))
+    assert "geen geldige bronverwijzing" in uncited and "niet met de code onderbouwd" in uncited
+    assert "geen geldige bronverwijzing" not in format_code_answer(write(writer(tools)[0]))
