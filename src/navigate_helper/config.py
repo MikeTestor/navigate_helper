@@ -21,7 +21,7 @@ CODE_SEARCH_MAX_SECONDS = 600
 # LOCAL_LLM_URL is set, and its models come from LOCAL_LLM_MODELS.
 PROVIDERS = ("openai", "anthropic", "local")
 CLOUD_PROVIDERS = ("openai", "anthropic")
-DEFAULT_LOCAL_MODELS = ("llama3.2", )
+DEFAULT_LOCAL_MODELS = ("llama3.2", "gpt-oss")
 LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
 LOCAL_API_KEY = "ollama"  # the client library insists on a non-empty key; the local server ignores it
 DEFAULT_LLM_PROVIDER = "openai"
