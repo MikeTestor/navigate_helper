@@ -12,6 +12,9 @@ CHUNK_TOKEN_CEILING = 512
 SHORT_SECTION_CHARS = 200
 COLLECTION_NAME = "navigate_manual"
 MAX_COMPLETION_TOKENS = 4000
+CODE_SEARCH_MAX_TOOL_CALLS = 40
+CODE_SEARCH_MAX_INPUT_TOKENS = 300_000
+CODE_SEARCH_MAX_SECONDS = 600
 
 PROVIDERS = ("openai", "anthropic")
 DEFAULT_LLM_PROVIDER = "openai"
@@ -42,6 +45,7 @@ class Config:
     code_dir: Path | None = None
     llm_provider: str = DEFAULT_LLM_PROVIDER
     anthropic_api_key: str | None = None
+    allow_code_to_openai: bool = False
 
     @property
     def raw_dir(self) -> Path:
@@ -93,4 +97,5 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         retrieval_k=int(env.get("RETRIEVAL_K", DEFAULT_RETRIEVAL_K)),
         data_dir=Path(env.get("DATA_DIR", DEFAULT_DATA_DIR)),
         code_dir=Path(env["CODE_DIR"]) if env.get("CODE_DIR") else None,
+        allow_code_to_openai=(env.get("ALLOW_CODE_TO_OPENAI") or "").strip().lower() == "true",
     )
