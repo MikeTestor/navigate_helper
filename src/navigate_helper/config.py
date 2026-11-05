@@ -13,7 +13,10 @@ SHORT_SECTION_CHARS = 200
 COLLECTION_NAME = "navigate_manual"
 MAX_COMPLETION_TOKENS = 4000
 
-DEFAULT_LLM_MODEL = "gpt-5-mini"
+PROVIDERS = ("openai", "anthropic")
+DEFAULT_LLM_PROVIDER = "openai"
+DEFAULT_LLM_MODELS = {"openai": "gpt-5-mini", "anthropic": "claude-sonnet-5-5"}
+API_KEY_NAMES = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}
 DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-base"
 DEFAULT_REASONING_EFFORT = "low"
 DEFAULT_RETRIEVAL_K = 6
@@ -37,6 +40,8 @@ class Config:
     retrieval_k: int
     data_dir: Path
     code_dir: Path | None = None
+    llm_provider: str = DEFAULT_LLM_PROVIDER
+    anthropic_api_key: str | None = None
 
     @property
     def raw_dir(self) -> Path:
@@ -63,10 +68,11 @@ class Config:
         return self.data_dir / "ask_log.jsonl"
 
     def require_api_key(self) -> str:
-        """Only `ask` and `ui` need the key."""
-        if not self.openai_api_key:
-            raise MissingConfigError("OPENAI_API_KEY is not set (put it in .env).")
-        return self.openai_api_key
+        """The key of the configured provider. Only `ask` and `ui` need it."""
+        key = self.anthropic_api_key if self.llm_provider == "anthropic" else self.openai_api_key
+        if not key:
+            raise MissingConfigError(f"{API_KEY_NAMES[self.llm_provider]} is not set (put it in .env).")
+        return key
 
 
 def load_config(env: dict[str, str] | None = None) -> Config:
@@ -74,9 +80,14 @@ def load_config(env: dict[str, str] | None = None) -> Config:
     if env is None:
         load_dotenv()
         env = dict(os.environ)
+    provider = (env.get("LLM_PROVIDER") or DEFAULT_LLM_PROVIDER).strip().lower()
+    if provider not in PROVIDERS:
+        raise MissingConfigError(f"LLM_PROVIDER must be one of {', '.join(PROVIDERS)}, not {provider!r}.")
     return Config(
         openai_api_key=env.get("OPENAI_API_KEY") or None,
-        llm_model=env.get("LLM_MODEL", DEFAULT_LLM_MODEL),
+        anthropic_api_key=env.get("ANTHROPIC_API_KEY") or None,
+        llm_provider=provider,
+        llm_model=env.get("LLM_MODEL") or DEFAULT_LLM_MODELS[provider],
         llm_reasoning_effort=env.get("LLM_REASONING_EFFORT", DEFAULT_REASONING_EFFORT),
         embedding_model=env.get("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL),
         retrieval_k=int(env.get("RETRIEVAL_K", DEFAULT_RETRIEVAL_K)),

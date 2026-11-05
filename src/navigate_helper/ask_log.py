@@ -7,14 +7,16 @@ from pathlib import Path
 
 
 class AskLog:
-    """Appends `{timestamp, model, **record}` as one JSON line. A write failure only warns."""
+    """Appends `{timestamp, **record}` as one JSON line. A write failure only warns.
 
-    def __init__(self, path: Path, model: str = ""):
+    The record carries its own `provider` and `model` (every Answer does).
+    """
+
+    def __init__(self, path: Path):
         self._path = path
-        self._model = model
 
     def write(self, record: dict) -> None:
-        line = {"timestamp": datetime.now(timezone.utc).isoformat(), "model": self._model, **record}
+        line = {"timestamp": datetime.now(timezone.utc).isoformat(), **record}
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             with self._path.open("a", encoding="utf-8") as handle:

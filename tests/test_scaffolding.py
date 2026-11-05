@@ -14,7 +14,7 @@ def test_stage_modules_import(module):
 
 def test_runtime_dependencies_import():
     for name in ("bs4", "markdownify", "chromadb", "gradio", "langchain_chroma",
-                 "langchain_huggingface", "langchain_openai", "dotenv", "tqdm"):
+                 "langchain_huggingface", "langchain_openai", "langchain_anthropic", "dotenv", "tqdm"):
         importlib.import_module(name)
 
 
@@ -32,6 +32,25 @@ def test_config_reads_env_keys():
     config = load_config({"OPENAI_API_KEY": "k", "LLM_MODEL": "m", "RETRIEVAL_K": "3", "DATA_DIR": "x"})
     assert (config.openai_api_key, config.llm_model, config.retrieval_k) == ("k", "m", 3)
     assert config.cleaned_dir.parts[0] == "x"
+
+
+def test_provider_defaults_to_openai_and_picks_the_matching_default_model():
+    assert load_config({}).llm_provider == "openai"
+    anthropic = load_config({"LLM_PROVIDER": "anthropic"})
+    assert anthropic.llm_provider == "anthropic" and anthropic.llm_model == "claude-sonnet-5-5"
+    assert load_config({"LLM_PROVIDER": "anthropic", "LLM_MODEL": "claude-haiku-5-5"}).llm_model == "claude-haiku-5-5"
+
+
+def test_unknown_provider_is_a_config_error():
+    with pytest.raises(MissingConfigError, match="LLM_PROVIDER"):
+        load_config({"LLM_PROVIDER": "gemini"})
+
+
+def test_require_api_key_follows_the_provider():
+    assert load_config({"OPENAI_API_KEY": "o"}).require_api_key() == "o"
+    assert load_config({"LLM_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": "a", "OPENAI_API_KEY": "o"}).require_api_key() == "a"
+    with pytest.raises(MissingConfigError, match="ANTHROPIC_API_KEY"):
+        load_config({"LLM_PROVIDER": "anthropic", "OPENAI_API_KEY": "o"}).require_api_key()
 
 
 def test_only_ask_and_ui_need_the_api_key(monkeypatch, capsys):

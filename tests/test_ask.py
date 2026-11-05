@@ -5,8 +5,8 @@ import pytest
 
 from navigate_helper import ask, cli
 from navigate_helper.ask import Assistant, JsonChunkStore
-from navigate_helper.config import load_config
-from navigate_helper.llm import LLMAnswer, LLMError, OpenAILLM
+from navigate_helper.config import MissingConfigError, load_config
+from navigate_helper.llm import AnthropicLLM, LLMAnswer, LLMError, OpenAILLM, build_llm
 from navigate_helper.prompts import APOLOGY, SYSTEM_PROMPT
 from tests.fakes import FakeChunkStore, FakeLLM, FakeRetriever
 from tests.test_embed import make_chunk, write_page
@@ -30,7 +30,7 @@ HITS = [("A#0", 0.9), ("A#1", 0.8), ("B#0", 0.7), ("C#0", 0.6), ("D#0", 0.5)]
 def assistant(result=None, error=None, k=5, log_path=None, hits=HITS):
     llm = FakeLLM(result=result, error=error)
     retriever = FakeRetriever(hits)
-    return Assistant(retriever, llm, FakeChunkStore(chunks()), k, log_path=log_path, model="fake"), llm, retriever
+    return Assistant(retriever, llm, FakeChunkStore(chunks()), k, log_path=log_path), llm, retriever
 
 
 def reply(cited, covered=True, text="Antwoord."):
@@ -47,6 +47,13 @@ def test_covered_answer_collects_cited_chunks_screenshots_and_links_deduplicated
     assert answer.page_links == [{"title": "Pagina B", "page_file": "B.htm"}]
     assert answer.source_pages == [{"page_file": "A.htm", "page_title": "A"}, {"page_file": "B.htm", "page_title": "B"}]
     assert not answer.uncited
+
+
+def test_every_answer_records_the_provider_and_model_that_made_it():
+    answer = assistant(reply(["A#0"]))[0].ask("vraag")
+    assert (answer.provider, answer.model) == ("fake", "fake-model")
+    failed = assistant(error=RuntimeError("x"))[0].ask("vraag")
+    assert (failed.provider, failed.model) == ("fake", "fake-model")
 
 
 def test_retrieved_holds_all_k_with_scores_and_cited_flag():
@@ -118,7 +125,9 @@ def test_every_call_appends_a_json_line_even_after_llm_errors(tmp_path):
     assistant(reply(["A#0"]), log_path=log)[0].ask("een")
     assistant(error=RuntimeError("x"), log_path=log)[0].ask("twee")
     first, second = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
-    assert first["question"] == "een" and first["model"] == "fake" and first["timestamp"]
+    assert first["question"] == "een" and first["timestamp"]
+    assert (first["provider"], first["model"]) == ("fake", "fake-model")
+    assert (second["provider"], second["model"]) == ("fake", "fake-model")
     assert first["cited"][0]["chunk_id"] == "A#0" and len(first["retrieved"]) == 5
     assert second["question"] == "twee" and second["error"]
 
@@ -205,3 +214,66 @@ def test_adapter_raises_llm_error_for_refusal_truncation_and_bad_output(result, 
 def test_adapter_uses_the_configured_effort_and_token_cap_without_temperature():
     chat = OpenAILLM(load_config({"OPENAI_API_KEY": "sk-test", "LLM_REASONING_EFFORT": "low"}))._chat
     assert chat.reasoning_effort == "low" and chat.max_tokens == 4000 and chat.temperature is None
+
+
+# --- the Anthropic adapter, with a stubbed chain (no network) -------------------------------
+
+ANTHROPIC_ENV = {"LLM_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": "sk-ant-test"}
+
+
+def anthropic_adapter(result):
+    llm = AnthropicLLM(load_config(ANTHROPIC_ENV))  # builds the client, calls nothing
+    llm._chain = StubChain(result)
+    return llm
+
+
+def anthropic_message(stop_reason="end_turn"):
+    from langchain_core.messages import AIMessage
+
+    return AIMessage(content="", response_metadata={"stop_reason": stop_reason})
+
+
+def test_anthropic_adapter_returns_the_parsed_answer():
+    parsed = reply(["A#0"])
+    result = {"raw": anthropic_message("tool_use"), "parsed": parsed, "parsing_error": None}
+    assert anthropic_adapter(result).invoke([]) is parsed
+
+
+@pytest.mark.parametrize("result, message", [
+    ({"raw": anthropic_message("refusal"), "parsed": None, "parsing_error": None}, "refused"),
+    ({"raw": anthropic_message("max_tokens"), "parsed": None, "parsing_error": None}, "cut off"),
+    ({"raw": anthropic_message(), "parsed": None, "parsing_error": ValueError("bad")}, "unparseable"),
+])
+def test_anthropic_adapter_raises_llm_error_for_refusal_truncation_and_bad_output(result, message):
+    with pytest.raises(LLMError, match=message):
+        anthropic_adapter(result).invoke([])
+
+
+def test_anthropic_adapter_uses_the_configured_model_and_token_cap():
+    llm = AnthropicLLM(load_config({**ANTHROPIC_ENV, "LLM_MODEL": "claude-haiku-5-5"}))
+    assert llm._chat.model == "claude-haiku-5-5" and llm._chat.max_tokens == 4000
+    assert (llm.provider, llm.model) == ("anthropic", "claude-haiku-5-5")
+
+
+def test_anthropic_adapter_asks_for_json_schema_output_not_forced_tool_calls(monkeypatch):
+    from langchain_anthropic import ChatAnthropic
+
+    seen = {}
+    monkeypatch.setattr(ChatAnthropic, "with_structured_output", lambda self, schema, **kwargs: seen.update(schema=schema, **kwargs))
+    AnthropicLLM(load_config(ANTHROPIC_ENV))
+    assert seen == {"schema": LLMAnswer, "method": "json_schema", "include_raw": True}
+
+
+def test_adapters_expose_provider_and_model():
+    openai = OpenAILLM(load_config({"OPENAI_API_KEY": "sk-test", "LLM_MODEL": "m"}))
+    assert (openai.provider, openai.model) == ("openai", "m")
+
+
+def test_anthropic_adapter_without_key_is_a_config_error():
+    with pytest.raises(MissingConfigError, match="ANTHROPIC_API_KEY"):
+        AnthropicLLM(load_config({"LLM_PROVIDER": "anthropic"}))
+
+
+def test_build_llm_picks_the_adapter_for_the_provider():
+    assert isinstance(build_llm(load_config({"OPENAI_API_KEY": "sk-test"})), OpenAILLM)
+    assert isinstance(build_llm(load_config(ANTHROPIC_ENV)), AnthropicLLM)

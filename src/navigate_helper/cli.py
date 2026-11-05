@@ -26,8 +26,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    config = load_config()
     try:
+        config = load_config()
         if args.command == "all":
             for name in PIPELINE:
                 print(f"== {name}", file=sys.stderr)
