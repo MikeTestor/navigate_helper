@@ -27,7 +27,7 @@ LOCAL_API_KEY = "ollama"  # the client library insists on a non-empty key; the l
 DEFAULT_LLM_PROVIDER = "openai"
 # The models the GUI dropdown offers per provider: a fixed allowlist, never free text (ADR 0002). The first is the default.
 PROVIDER_MODELS = {
-    "openai": ("gpt-5.4-mini", "gpt-5.6-Terra"),
+    "openai": ("gpt-5.4-mini", "gpt-5.6-terra"),
     "anthropic": ("claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5"),
 }
 DEFAULT_LLM_MODELS = {provider: models[0] for provider, models in PROVIDER_MODELS.items()}
