@@ -41,12 +41,14 @@ uv run python -m navigate_helper ui               # Gradio dev app
 
 ## Configuration
 
-Set these in a `.env` file in the project root (there is no `.env.example`; this table is the reference). Only `ask` and `ui` need `OPENAI_API_KEY`.
+Set these in a `.env` file in the project root (there is no `.env.example`; this table is the reference). Only `ask` and `ui` need the API key of the configured provider (`OPENAI_API_KEY` or `ANTHROPIC_API_KEY`).
 
 | Key | Default | Meaning |
 |---|---|---|
+| `LLM_PROVIDER` | `openai` | `openai` or `anthropic` |
 | `OPENAI_API_KEY` | none | OpenAI key |
-| `LLM_MODEL` | `gpt-5-mini` | Chat model |
+| `ANTHROPIC_API_KEY` | none | Anthropic key |
+| `LLM_MODEL` | `gpt-5-mini` (OpenAI), `claude-sonnet-5-5` (Anthropic) | Chat model |
 | `LLM_REASONING_EFFORT` | `low` | Reasoning effort for the chat model |
 | `EMBEDDING_MODEL` | `intfloat/multilingual-e5-base` | Local embedding model |
 | `RETRIEVAL_K` | `6` | Chunks retrieved per question |
@@ -73,7 +75,7 @@ or put `GRADIO_SERVER_NAME=0.0.0.0` in `.env`. Colleagues then open `http://<PC 
 
 **First run:** `embed` and `ask` download the e5 embedding model (about 1 GB) into the Hugging Face cache once.
 
-**Model deadline:** OpenAI removes `gpt-5-mini` and `gpt-5` from its API on **2026-12-11**. The follow-up [Pick the successor to gpt-5-mini](https://github.com/MikeTestor/navigate_helper/issues/25) must land before then.
+**Model deadline:** OpenAI removes `gpt-5-mini` and `gpt-5` from its API on **2026-12-11**. The follow-up [Pick the successor to gpt-5-mini](https://github.com/MikeTestor/navigate_helper/issues/25) must land before then. `LLM_PROVIDER=anthropic` is available as an alternative (not yet checked against the live API).
 
 ## Code layout
 
@@ -85,7 +87,7 @@ src/navigate_helper/
   chunk.py              stage 2: Cleaned Pages -> Chunks (JSON)
   embed.py              stage 3: Chunks -> Chroma store
   ask.py                ask() and ManualAnswer
-  llm.py                the OpenAI adapter behind ask()
+  llm.py                the OpenAI and Anthropic adapters behind ask()
   ask_log.py            the ask_log.jsonl writer
   ui.py                 Gradio dev app
 tests/                  pytest; fixtures/pages holds four small Manual Pages

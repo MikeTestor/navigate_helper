@@ -11,7 +11,7 @@ from pathlib import Path
 from navigate_helper.ask_log import AskLog
 from navigate_helper.config import Config, load_config
 from navigate_helper.embed import ChromaRetriever, load_embedder, open_store
-from navigate_helper.llm import OpenAILLM
+from navigate_helper.llm import build_llm
 from navigate_helper.prompts import APOLOGY, CONTEXT_TEMPLATE, SYSTEM_PROMPT
 
 CLOSEST_PAGES = 3
@@ -59,6 +59,8 @@ class ManualAnswer:
     source_pages: list[dict] = field(default_factory=list)
     dropped_citation_ids: list[str] = field(default_factory=list)
     error: str | None = None
+    provider: str = ""
+    model: str = ""
 
     @property
     def uncited(self) -> bool:
@@ -83,17 +85,18 @@ class JsonChunkStore:
 
 
 class Assistant:
-    def __init__(self, retriever, llm, chunk_store, k: int, log_path: Path | None = None, model: str = ""):
+    def __init__(self, retriever, llm, chunk_store, k: int, log_path: Path | None = None):
         self._retriever = retriever
         self._llm = llm
         self._chunks = chunk_store
         self._k = k
-        self._log = AskLog(log_path, model) if log_path is not None else None
+        self._log = AskLog(log_path) if log_path is not None else None
 
     def ask(self, question: str) -> ManualAnswer:
         hits = self._retriever.retrieve(question, self._k)  # retrieval errors raise
         retrieved = [ScoredChunk.from_chunk(self._chunks.get(chunk_id), score) for chunk_id, score in hits]
         answer = self._answer(question, retrieved)
+        answer.provider, answer.model = self._llm.provider, self._llm.model
         if self._log is not None:
             self._log.write(asdict(answer))
         return answer
@@ -155,9 +158,9 @@ def closest_pages(retrieved: list[ScoredChunk]) -> list[dict]:
 
 
 def build_assistant(config: Config | None = None) -> Assistant:
-    """Wire the real Chroma store, `ChatOpenAI` and the chunked JSON. Loads the e5 model (slow)."""
+    """Wire the real Chroma store, the configured LLM provider and the chunked JSON. Loads the e5 model (slow)."""
     config = config or load_config()
-    llm = OpenAILLM(config)  # raises MissingConfigError without the API key
+    llm = build_llm(config)  # raises MissingConfigError without the provider's API key
     store = open_store(config.chroma_dir, load_embedder(config))
     return Assistant(
         ChromaRetriever(store),
@@ -165,7 +168,6 @@ def build_assistant(config: Config | None = None) -> Assistant:
         JsonChunkStore(config.chunked_dir),
         config.retrieval_k,
         log_path=config.ask_log_path,
-        model=config.llm_model,
     )
 
 

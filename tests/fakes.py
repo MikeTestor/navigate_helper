@@ -54,6 +54,8 @@ class FakeLLM:
     result: object = None
     error: Exception | None = None
     prompts: list[object] = field(default_factory=list)
+    provider: str = "fake"
+    model: str = "fake-model"
 
     def invoke(self, prompt):
         self.prompts.append(prompt)
