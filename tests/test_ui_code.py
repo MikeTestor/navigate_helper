@@ -217,3 +217,15 @@ def test_run_gives_the_chat_app_a_code_checker_built_from_the_config(monkeypatch
     monkeypatch.setattr(ui, "serve", lambda *args, **kwargs: None)
     ui.run(config)
     assert seen["checker"] == "checker"
+
+
+def test_the_code_check_handlers_are_generator_functions_so_gradio_streams_them(config, tmp_path):
+    import inspect
+
+    checker, _ = code_checker(tmp_path)
+    blocks = ui.chat_blocks(FakeAssistant(make_answer()), config, checker=checker)
+    chat = next(b for b in blocks.blocks.values() if isinstance(b, gr.Chatbot))
+    stop = next(b for b in blocks.blocks.values() if isinstance(b, gr.Button) and b.value == "Stop")
+    code_outputs = [fn for fn in blocks.fns.values() if stop in (fn.outputs or [])]
+    assert len(code_outputs) == 2  # after a question, and on the button
+    assert all(inspect.isgeneratorfunction(fn.fn) for fn in code_outputs)

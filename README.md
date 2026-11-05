@@ -53,7 +53,7 @@ Set these in a `.env` file in the project root (there is no `.env.example`; this
 | `EMBEDDING_MODEL` | `intfloat/multilingual-e5-base` | Local embedding model |
 | `RETRIEVAL_K` | `6` | Chunks retrieved per question |
 | `DATA_DIR` | `database` | Root of all data folders |
-| `CODE_DIR` | none | The Code Checkout (read in place, never copied into this repository); used by the Code Search |
+| `CODE_DIR` | none | The Code Checkout (read in place, never copied into this repository); used by the Code Search. With it set, the app shows "Controleer in de code" under each Manual Answer, starts the check by itself when the Manual says it is not covered, and has a Code tab and a Stop button |
 | `ALLOW_CODE_TO_OPENAI` | `false` | The Code Search refuses OpenAI unless this is `true` (ADR 0002) |
 
 The `ui` command also reads two optional settings: `GRADIO_SERVER_PORT` (default `7860`) and `GRADIO_SERVER_NAME` (default `127.0.0.1`). See *Sharing the app with colleagues* below.

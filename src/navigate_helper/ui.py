@@ -539,14 +539,16 @@ def chat_blocks(
         if checker:
             check_inputs = [provider, model, chats, active]
             check_outputs = [chat, box, stop, code_view, chats]
-            asked.then(
-                lambda name, choice, chats, active: auto_check(checker, switch, chats, active, name, choice),
-                check_inputs, check_outputs,
-            ).then(None, None, None, js=SCROLL_TO_QUESTION_JS)
-            chat.option_select(
-                lambda name, choice, chats, active: run_check(checker, switch, chats, active, name, choice),
-                check_inputs, check_outputs,
-            ).then(None, None, None, js=SCROLL_TO_QUESTION_JS)
+
+            # Real generator functions, not lambdas returning one: Gradio only streams a function that is a generator.
+            def check_after_question(name, choice, chats, active):
+                yield from auto_check(checker, switch, chats, active, name, choice)
+
+            def check_on_click(name, choice, chats, active):
+                yield from run_check(checker, switch, chats, active, name, choice)
+
+            asked.then(check_after_question, check_inputs, check_outputs).then(None, None, None, js=SCROLL_TO_QUESTION_JS)
+            chat.option_select(check_on_click, check_inputs, check_outputs).then(None, None, None, js=SCROLL_TO_QUESTION_JS)
             stop.click(stop_check, [chats, active], None, queue=False)
         gallery.select(select_screenshot, None, large)
         clear_links.click(clear_page_links, [chats, active], [links, chats])
