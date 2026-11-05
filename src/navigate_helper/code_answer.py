@@ -26,7 +26,7 @@ UNVERIFIED_LABEL = "Ongecontroleerd antwoord op basis van de broncode: laat het 
 AGREES, DIFFERS, UNKNOWN, NO_MANUAL = "agrees", "differs", "unknown", "no_manual_answer"
 
 # Statuses of a CodeAnswer besides the stopped ones it takes over from CodeSearchResult.
-ANSWERED, UNSTRUCTURED = "answered", "unstructured"
+ANSWERED, UNSTRUCTURED, NO_EVIDENCE = "answered", "unstructured", "no_evidence"
 
 STOPPED_NOTICES = {
     "tool_call_limit": "Het onderzoek van de code is gestopt omdat het maximum aantal tool-aanroepen is bereikt.",
@@ -36,6 +36,8 @@ STOPPED_NOTICES = {
     "error": "Het onderzoek van de code is gestopt door een fout.",
 }
 NO_CONCLUSION = " Er is geen conclusie; hieronder staat wat is onderzocht."
+NO_EVIDENCE_NOTICE = "Het model heeft geen code gelezen (de tool-aanroepen ontbraken of mislukten). Er is geen conclusie."
+UNCITED_NOTICE = "[let op: geen geldige bronverwijzing: dit antwoord is niet met de code onderbouwd]"
 
 
 # --- what the model returns (kept simple: Anthropic's JSON schema mode is picky) ------------------
@@ -78,8 +80,9 @@ class CodeCitation:
 
 @dataclass
 class CodeAnswer:
-    """`status` is answered, unstructured (the conclusion as written, structuring failed), or a stopped status of
-    the Code Search (tool_call_limit, token_limit, timeout, cancelled, error). Every Code Answer is unverified.
+    """`status` is answered, unstructured (the conclusion as written, structuring failed), no_evidence (the run
+    finished without one successful tool call, so there is no conclusion), or a stopped status of the Code Search
+    (tool_call_limit, token_limit, timeout, cancelled, error). Every Code Answer is unverified.
 
     `manual_agreement` is agrees, differs, unknown, or no_manual_answer (set by the code, not the model).
     `code_date` is the ISO date the Code Checkout was last modified ("code per <date>").
@@ -150,6 +153,10 @@ class CodeAnswerWriter:
                 error="the Code Search finished without a conclusion",
                 **base,
             )
+        if not any(call.ok for call in result.tool_calls):
+            # A conclusion written without a single successful look at the code is the model's guess (often a copy
+            # of the Manual Answer), so it is not turned into an Answer: same as a stopped run.
+            return CodeAnswer(status=NO_EVIDENCE, text=NO_EVIDENCE_NOTICE, **base)
         prompt = [
             ("system", CODE_ANSWER_PROMPT),
             (
@@ -168,7 +175,7 @@ class CodeAnswerWriter:
             return CodeAnswer(status=UNSTRUCTURED, text=result.conclusion, error=f"{type(error).__name__}: {error}", **base)
 
         citations, dropped = self._validated(output.citations)
-        agreement, differing = _verdict(output, manual_answer, manual_pages)
+        agreement, differing = _verdict(output, manual_answer, manual_pages, cited=bool(citations))
         base["not_checked"] = _merge_not_checked(output.not_checked)
         return CodeAnswer(
             status=ANSWERED,
@@ -208,9 +215,13 @@ class CodeAnswerWriter:
         return CodeCitation(read.path, start, end, read.text, snippet_truncated=end - start + 1 > MAX_SNIPPET_LINES)
 
 
-def _verdict(output: LLMCodeAnswer, manual_answer: str | None, manual_pages: list[str]) -> tuple[str, list[str]]:
+def _verdict(
+    output: LLMCodeAnswer, manual_answer: str | None, manual_pages: list[str], cited: bool
+) -> tuple[str, list[str]]:
     if not manual_answer:
         return NO_MANUAL, []
+    if not cited:  # "the code agrees/differs" needs at least one valid place in the code to point at
+        return UNKNOWN, []
     if output.manual_agreement != DIFFERS:
         return output.manual_agreement, []
     differing = [page for page in dict.fromkeys(p.strip() for p in output.differing_manual_pages) if page in manual_pages]
@@ -245,6 +256,8 @@ def format_code_answer(answer: CodeAnswer, snippets: bool = True) -> str:
     lines += ["", answer.text]
     if answer.error:
         lines += ["", f"[fout: {answer.error}]"]
+    if answer.uncited:
+        lines += ["", UNCITED_NOTICE]
     if answer.status == UNSTRUCTURED:
         lines += ["", "[let op: de bronverwijzingen in dit antwoord zijn niet gecontroleerd]"]
     if answer.status == ANSWERED:
