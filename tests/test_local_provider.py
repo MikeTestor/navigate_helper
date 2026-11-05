@@ -28,7 +28,7 @@ def test_the_local_provider_is_off_until_a_url_is_set():
 def test_with_a_url_it_is_offered_with_its_models_from_env():
     config = load_config(LOCAL)
     assert available_providers(config) == ("openai", "anthropic", "local")
-    assert allowed_models(config, "local") == ("llama3.2",)
+    assert allowed_models(config, "local") == ("llama3.2", "gpt-oss")
     many = load_config({**LOCAL, "LOCAL_LLM_MODELS": "llama3.2, gpt-oss ,"})
     assert allowed_models(many, "local") == ("llama3.2", "gpt-oss")
 
