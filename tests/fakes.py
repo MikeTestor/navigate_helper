@@ -3,6 +3,10 @@
 import hashlib
 from dataclasses import dataclass, field
 
+from langchain_core.messages import AIMessage
+
+from navigate_helper.llm import ChatTurn, ToolCall
+
 
 class FakeEmbedder:
     """Deterministic embedder that records every call, so prefix tests can inspect it."""
@@ -62,6 +66,32 @@ class FakeLLM:
         if self.error:
             raise self.error
         return self.result
+
+
+def scripted_turn(text: str = "", calls: tuple[tuple[str, dict], ...] = (), tokens: int = 100) -> ChatTurn:
+    """One model turn: final `text` and/or tool `calls` as (name, args); `tokens` counted as input and output."""
+    tool_calls = tuple(ToolCall(id=f"call-{i}", name=name, args=args) for i, (name, args) in enumerate(calls))
+    message = AIMessage(
+        content=text, tool_calls=[{"id": c.id, "name": c.name, "args": c.args} for c in tool_calls]
+    )
+    return ChatTurn(message=message, text=text, tool_calls=tool_calls, input_tokens=tokens, output_tokens=tokens)
+
+
+@dataclass
+class FakeToolLLM:
+    """Plays scripted `ChatTurn`s (or raises a scripted Exception) for `chat`, and records every call."""
+
+    turns: list[object] = field(default_factory=list)
+    provider: str = "fake"
+    model: str = "fake-model"
+    calls: list[tuple[list, list]] = field(default_factory=list)
+
+    def chat(self, messages, tools):
+        self.calls.append((list(messages), tools))
+        turn = self.turns.pop(0)
+        if isinstance(turn, Exception):
+            raise turn
+        return turn
 
 
 class FakeTokenizer:

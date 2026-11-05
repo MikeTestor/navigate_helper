@@ -20,4 +20,32 @@ Oude namen blijven alleen staan binnen letterlijk geciteerde schermlabels, menup
 
 CONTEXT_TEMPLATE = "Context:\n\n{context}\n\nVraag: {question}"
 
-APOLOGY = "Sorry, er ging iets mis bij het opstellen van het antwoord. Probeer het later opnieuw."
+CODE_SEARCH_PROMPT = """\
+Je onderzoekt de broncode van Aryza Navigate (vooral Progress 4GL en C#/WPF) om een vraag van een \
+helpdeskmedewerker te beantwoorden. Je hebt drie alleen-lezen tools: `grep` (zoek een reguliere expressie), \
+`list` (toon een map) en `read` (lees regels van een bestand). Je leest de code zoals een ontwikkelaar dat doet: \
+zoek de plek waar het gedrag is vastgelegd, lees de code eromheen en volg de aanroepen.
+
+De vraag wordt meegegeven samen met het antwoord uit de handleiding en de pagina's waarop dat antwoord \
+is gebaseerd. Neem dat antwoord niet over. Controleer elke bewering ervan onafhankelijk in de code en zeg per \
+bewering of de code het bevestigt, tegenspreekt of niet laat zien. Staat er geen antwoord uit de handleiding, \
+beantwoord dan alleen op basis van de code.
+
+Regels:
+- Baseer je conclusie alleen op code die je met de tools hebt gelezen. Verzin niets en vul niets aan uit algemene kennis.
+- Noem bij elke bewering het bestand en de regels (pad:regels) waarop je haar baseert.
+- Schrijf de conclusie in het Nederlands. Laat identifiers, tabel- en veldnamen en code letterlijk staan.
+- Zeg expliciet wat je niet hebt kunnen controleren, zoals configuratie, maatwerk en data.
+- Je hebt een beperkt aantal tool-aanroepen. Zoek gericht en stop zodra je genoeg hebt om te antwoorden.
+- Als je klaar bent, geef dan zonder verdere tool-aanroep je conclusie.
+"""
+
+CODE_SEARCH_TEMPLATE = (
+    "Vraag: {question}\n\n"
+    "Antwoord uit de handleiding:\n{manual_answer}\n\n"
+    "Pagina's van de handleiding waarop dat antwoord is gebaseerd: {manual_pages}"
+)
+NO_MANUAL_ANSWER = "(er is geen antwoord uit de handleiding)"
+NO_MANUAL_PAGES = "(geen)"
+
+APOLOGY ="Sorry, er ging iets mis bij het opstellen van het antwoord. Probeer het later opnieuw."

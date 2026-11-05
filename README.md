@@ -53,6 +53,8 @@ Set these in a `.env` file in the project root (there is no `.env.example`; this
 | `EMBEDDING_MODEL` | `intfloat/multilingual-e5-base` | Local embedding model |
 | `RETRIEVAL_K` | `6` | Chunks retrieved per question |
 | `DATA_DIR` | `database` | Root of all data folders |
+| `CODE_DIR` | none | The Code Checkout (read in place, never copied into this repository); used by the Code Search |
+| `ALLOW_CODE_TO_OPENAI` | `false` | The Code Search refuses OpenAI unless this is `true` (ADR 0002) |
 
 The `ui` command also reads two optional settings: `GRADIO_SERVER_PORT` (default `7860`) and `GRADIO_SERVER_NAME` (default `127.0.0.1`). See *Sharing the app with colleagues* below.
 
@@ -89,6 +91,8 @@ src/navigate_helper/
   ask.py                ask() and ManualAnswer
   llm.py                the OpenAI and Anthropic adapters behind ask()
   ask_log.py            the ask_log.jsonl writer
+  code_tools.py         read-only grep, list and read over the Code Checkout
+  code_search.py        the Code Search agent loop and its limits (not wired into ask or the UI yet)
   ui.py                 Gradio dev app
 tests/                  pytest; fixtures/pages holds four small Manual Pages
 database/               data, not committed (knowledge-base/, embedded/, ask_log.jsonl)
