@@ -48,4 +48,22 @@ CODE_SEARCH_TEMPLATE = (
 NO_MANUAL_ANSWER = "(er is geen antwoord uit de handleiding)"
 NO_MANUAL_PAGES = "(geen)"
 
+CODE_ANSWER_PROMPT = """Je zet de conclusie van een code-onderzoek om in een gestructureerd antwoord voor een helpdeskmedewerker. Je krijgt de vraag, het antwoord uit de handleiding (als dat er is), de pagina's van de handleiding en de conclusie. Je hebt de code zelf niet.
+
+Regels:
+- Baseer alles op de conclusie. Voeg niets toe en verzin niets.
+- `answer`: het antwoord in het Nederlands (Markdown), beknopt. Laat identifiers, tabel- en veldnamen en code letterlijk staan. Neem geen codefragmenten over; die worden apart getoond.
+- `citations`: de plekken (`path`, `start_line`, `end_line`) die de conclusie zelf noemt als pad:regels, en alleen die. Houd een bereik klein (liefst hooguit 20 regels). Noemt de conclusie geen plek, laat de lijst dan leeg.
+- `manual_agreement`: `agrees` als de code het antwoord uit de handleiding bevestigt, `differs` als de code het tegenspreekt, `unknown` als de conclusie dat niet vaststelt of er geen antwoord uit de handleiding is.
+- `differing_manual_pages`: alleen bij `differs`, de pagina's uit de lijst die de code tegenspreekt.
+- `not_checked`: wat de conclusie zelf als niet gecontroleerd noemt, kort; laat de lijst leeg als zij dat niet noemt.
+"""
+
+CODE_ANSWER_TEMPLATE = (
+    "Vraag: {question}\n\n"
+    "Antwoord uit de handleiding:\n{manual_answer}\n\n"
+    "Pagina's van de handleiding waarop dat antwoord is gebaseerd: {manual_pages}\n\n"
+    "Conclusie van het code-onderzoek:\n{conclusion}"
+)
+
 APOLOGY ="Sorry, er ging iets mis bij het opstellen van het antwoord. Probeer het later opnieuw."

@@ -1,6 +1,7 @@
-"""The LLM adapters (OpenAI, Anthropic): structured output behind `invoke(messages)`, plus `provider` and `model`.
+"""The LLM adapters (OpenAI, Anthropic): structured output behind `invoke(messages, schema)`, plus `provider` and `model`.
 
-`Assistant` in `ask` takes any object with those, so it holds no provider code.
+`Assistant` in `ask` takes any object with those, so it holds no provider code. `schema` defaults to `LLMAnswer`
+(the Manual path); the Code Answer path passes its own.
 """
 
 from dataclasses import dataclass
@@ -56,6 +57,15 @@ def _chat_turn(message) -> ChatTurn:
     )
 
 
+def _chain_for(llm, schema):
+    """The structured-output chain for `schema`; `LLMAnswer` is built up front, any other schema once on first use."""
+    if schema is LLMAnswer:
+        return llm._chain
+    if schema not in llm._other_chains:
+        llm._other_chains[schema] = llm._structured(schema)
+    return llm._other_chains[schema]
+
+
 class OpenAILLM:
     """`ChatOpenAI` with strict structured output; `invoke(messages)` returns an `LLMAnswer` or raises."""
 
@@ -72,10 +82,15 @@ class OpenAILLM:
             max_completion_tokens=MAX_COMPLETION_TOKENS,
         )
         self._chat = chat
-        self._chain = chat.with_structured_output(LLMAnswer, method="json_schema", strict=True, include_raw=True)
+        self._chain = self._structured(LLMAnswer)
+        self._other_chains: dict[type[BaseModel], Any] = {}
 
-    def invoke(self, messages) -> LLMAnswer:
-        result = self._chain.invoke(messages)
+    def _structured(self, schema):
+        return self._chat.with_structured_output(schema, method="json_schema", strict=True, include_raw=True)
+
+    def invoke(self, messages, schema: type[BaseModel] = LLMAnswer):
+        """The model's reply parsed into `schema` (default `LLMAnswer`), or an `LLMError`."""
+        result = _chain_for(self, schema).invoke(messages)
         raw = result.get("raw")
         if raw is not None:
             self._check(raw)
@@ -108,11 +123,16 @@ class AnthropicLLM:
         self.model = config.llm_model
         chat = ChatAnthropic(model=config.llm_model, api_key=config.require_api_key(), max_tokens=MAX_COMPLETION_TOKENS)
         self._chat = chat
-        # json_schema, not the default forced tool call: newer Claude models do not support forced tool calls.
-        self._chain = chat.with_structured_output(LLMAnswer, method="json_schema", include_raw=True)
+        self._chain = self._structured(LLMAnswer)
+        self._other_chains: dict[type[BaseModel], Any] = {}
 
-    def invoke(self, messages) -> LLMAnswer:
-        result = self._chain.invoke(messages)
+    def _structured(self, schema):
+        # json_schema, not the default forced tool call: newer Claude models do not support forced tool calls.
+        return self._chat.with_structured_output(schema, method="json_schema", include_raw=True)
+
+    def invoke(self, messages, schema: type[BaseModel] = LLMAnswer):
+        """The model's reply parsed into `schema` (default `LLMAnswer`), or an `LLMError`."""
+        result = _chain_for(self, schema).invoke(messages)
         self._check(result.get("raw"))
         if result.get("parsed") is None:
             raise LLMError(f"unparseable model output: {result.get('parsing_error')}")

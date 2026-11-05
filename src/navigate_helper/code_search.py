@@ -79,6 +79,14 @@ class CodeSearchError(RuntimeError):
     """The Code Search is not allowed to run in this configuration."""
 
 
+def require_code_allowed(llm, allow_code_to_openai: bool) -> None:
+    """Refuse to send code-derived text to OpenAI unless that was explicitly approved (ADR 0002)."""
+    if llm.provider == "openai" and not allow_code_to_openai:
+        raise CodeSearchError(
+            "the Code Search does not send code to OpenAI; set ALLOW_CODE_TO_OPENAI=true only if that is approved"
+        )
+
+
 @dataclass
 class ToolCallRecord:
     """One tool call of a run. The result text is not kept (it is code); only its size."""
@@ -121,10 +129,7 @@ class CodeSearch:
         clock: Callable[[], float] = time.monotonic,
         log: AskLog | None = None,
     ):
-        if llm.provider == "openai" and not allow_code_to_openai:
-            raise CodeSearchError(
-                "the Code Search does not send code to OpenAI; set ALLOW_CODE_TO_OPENAI=true only if that is approved"
-            )
+        require_code_allowed(llm, allow_code_to_openai)
         self._llm = llm
         self._tools = tools
         self._max_tool_calls = max_tool_calls

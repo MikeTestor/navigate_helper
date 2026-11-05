@@ -131,3 +131,43 @@ def test_grep_is_capped(tree):
 def test_missing_root_is_an_error(tmp_path):
     with pytest.raises(CodeToolError):
         CodeTools(tmp_path / "nope")
+
+
+# --- the newest modification date ("code per <date>") ----------------------------------------
+
+
+def stamp(path, year, month, day):
+    import os
+    from datetime import datetime
+
+    moment = datetime(year, month, day, 12).timestamp()
+    os.utime(path, (moment, moment))
+
+
+def test_newest_modification_is_the_latest_date_among_readable_files(tmp_path):
+    from datetime import date
+
+    (tmp_path / "ed").mkdir()
+    (tmp_path / "ed" / "old.p").write_text("a", encoding="utf-8")
+    (tmp_path / "ed" / "new.cs").write_text("b", encoding="utf-8")
+    stamp(tmp_path / "ed" / "old.p", 2025, 3, 1)
+    stamp(tmp_path / "ed" / "new.cs", 2026, 10, 30)
+    assert CodeTools(tmp_path).newest_modification() == date(2026, 10, 30)
+
+
+def test_newest_modification_ignores_excluded_folders_and_unreadable_extensions(tmp_path):
+    from datetime import date
+
+    (tmp_path / "ed").mkdir()
+    (tmp_path / "ed" / "a.p").write_text("a", encoding="utf-8")
+    (tmp_path / "ed" / "picture.png").write_bytes(b"x")
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "b.p").write_text("b", encoding="utf-8")
+    stamp(tmp_path / "ed" / "a.p", 2025, 3, 1)
+    stamp(tmp_path / "ed" / "picture.png", 2026, 11, 1)
+    stamp(tmp_path / "bin" / "b.p", 2026, 11, 2)
+    assert CodeTools(tmp_path).newest_modification() == date(2025, 3, 1)
+
+
+def test_newest_modification_is_none_for_a_checkout_without_readable_files(tmp_path):
+    assert CodeTools(tmp_path).newest_modification() is None
