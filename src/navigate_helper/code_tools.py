@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 
 ALLOWED_EXTENSIONS = frozenset({".p", ".i", ".w", ".cls", ".v", ".cs", ".xaml", ".xml", ".df", ".md"})
@@ -96,6 +97,11 @@ class CodeTools:
                     if len(matches) >= limit:
                         return matches
         return matches
+
+    def newest_modification(self) -> date | None:
+        """The newest modification date among the readable files: what a Code Answer calls "code per <date>"."""
+        newest = max((file.stat().st_mtime for file in self._files(self._root)), default=None)
+        return None if newest is None else datetime.fromtimestamp(newest).date()
 
     def _files(self, start: Path):
         if start.is_file():

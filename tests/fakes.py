@@ -60,9 +60,11 @@ class FakeLLM:
     prompts: list[object] = field(default_factory=list)
     provider: str = "fake"
     model: str = "fake-model"
+    schemas: list[object] = field(default_factory=list)
 
-    def invoke(self, prompt):
+    def invoke(self, prompt, schema=None):
         self.prompts.append(prompt)
+        self.schemas.append(schema)
         if self.error:
             raise self.error
         return self.result
