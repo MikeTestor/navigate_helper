@@ -177,3 +177,45 @@ def test_a_stopped_run_is_logged_too(tools, tmp_path):
     sut, _ = search(tools, [scripted_turn(calls=(GREP,)), scripted_turn(calls=(READ,))], max_tool_calls=1, log=AskLog(log))
     run(sut)
     assert json.loads(log.read_text(encoding="utf-8"))["status"] == "tool_call_limit"
+
+
+# --- progress events (a plain stream, independent of any GUI) ----------------------------------------
+
+
+def collect(sut, **kwargs):
+    events = []
+    result = run(sut, on_event=events.append, **kwargs)
+    return result, events
+
+
+def test_a_run_reports_started_and_each_tool_call_as_it_happens(tools):
+    sut, _ = search(tools, [scripted_turn(calls=(GREP, READ)), scripted_turn("Klaar.")])
+    result, events = collect(sut)
+    assert [(e.kind, e.text) for e in events] == [
+        ("started", "Onderzoek gestart"),
+        ("tool_call", "grep Invoice"),
+        ("tool_call", "read src/order.p 1 3"),
+    ]
+    assert result.status == "finished"
+
+
+def test_a_failed_tool_call_is_marked_in_its_progress_line(tools):
+    sut, _ = search(tools, [scripted_turn(calls=(("read", {"path": "data/secret.p"}),)), scripted_turn("Klaar.")])
+    _, events = collect(sut)
+    assert events[-1].kind == "tool_call" and events[-1].text.endswith("(mislukt)")
+
+
+def test_a_callback_that_raises_does_not_break_the_run(tools):
+    def broken(event):
+        raise RuntimeError("scherm weg")
+
+    sut, _ = search(tools, [scripted_turn(calls=(GREP,)), scripted_turn("Klaar.")])
+    result = run(sut, on_event=broken)
+    assert result.status == "finished" and len(result.tool_calls) == 1
+
+
+def test_a_tool_call_record_describes_itself_on_one_line():
+    from navigate_helper.code_search import ToolCallRecord
+
+    assert ToolCallRecord("grep", {"pattern": "Invoice", "path": "src"}, True, 3).describe() == "grep Invoice src"
+    assert ToolCallRecord("list", {}, True, 3).describe() == "list"

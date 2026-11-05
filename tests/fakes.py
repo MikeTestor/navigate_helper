@@ -81,12 +81,21 @@ def scripted_turn(text: str = "", calls: tuple[tuple[str, dict], ...] = (), toke
 
 @dataclass
 class FakeToolLLM:
-    """Plays scripted `ChatTurn`s (or raises a scripted Exception) for `chat`, and records every call."""
+    """Plays scripted `ChatTurn`s (or raises a scripted Exception) for `chat`, and records every call.
+
+    `invoke` returns `result`, so one fake can play both the Code Search loop and the Code Answer step.
+    """
 
     turns: list[object] = field(default_factory=list)
     provider: str = "fake"
     model: str = "fake-model"
     calls: list[tuple[list, list]] = field(default_factory=list)
+    result: object = None
+    prompts: list[object] = field(default_factory=list)
+
+    def invoke(self, prompt, schema=None):
+        self.prompts.append(prompt)
+        return self.result
 
     def chat(self, messages, tools):
         self.calls.append((list(messages), tools))

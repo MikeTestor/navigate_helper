@@ -139,7 +139,7 @@ def make_chats(*titles):
 
 
 def test_a_new_chat_is_added_and_selected_with_empty_views():
-    chats, active, history, links, gallery, large, rows, notes = ui.new_chat(make_chats("eerste vraag"))
+    chats, active, history, links, gallery, large, rows, notes, code = ui.new_chat(make_chats("eerste vraag"))
     assert len(chats) == 2 and active == 1 and ui.tab_labels(chats) == ["eerste vraag", "Chat 2"]
     assert history == [] and links["visible"] is False and gallery == [] and large["value"] is None and rows == []
 
@@ -191,7 +191,7 @@ def test_conversations_keep_their_own_history_links_and_views(config):
     ui.submit(FakeAssistant(make_answer()), config, "vraag in chat 1", chats, 0, 0)
     chats, *_ = ui.new_chat(chats)
     ui.submit(FakeAssistant(make_answer(text="Tweede antwoord.")), config, "vraag in chat 2", chats, 1, 0)
-    _, history, links, gallery, large, rows, notes = ui.switch_chat(chats, 0)
+    _, history, links, gallery, large, rows, notes, _ = ui.switch_chat(chats, 0)
     assert [m["content"] for m in history] == ["vraag in chat 1", "Het antwoord."]
     assert links["choices"] == [("Partner", "Partner.htm")] and len(gallery) == 2 and len(rows) == 3
     assert "Fout#9" in notes
@@ -282,7 +282,8 @@ def test_run_builds_the_assistant_once_and_serves_raw(monkeypatch, config):
     built, launched = [], {}
 
     monkeypatch.setattr(ui, "build_assistant", lambda c: built.append(c) or FakeAssistant())
-    monkeypatch.setattr(ui, "chat_blocks", lambda assistant, c: "blocks")
+    monkeypatch.setattr(ui, "build_code_checker", lambda c: None)
+    monkeypatch.setattr(ui, "chat_blocks", lambda assistant, c, switch=None, checker=None: "blocks")
     monkeypatch.setattr(ui, "serve", lambda blocks, c, **kwargs: launched.update(kwargs, blocks=blocks, config=c))
     ui.run(config)
     assert built == [config] and launched["blocks"] == "blocks" and launched["config"] == config

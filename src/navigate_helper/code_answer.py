@@ -8,6 +8,7 @@ stays a partial result: a fixed notice and the tool-call evidence, never a concl
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Literal
 
@@ -235,7 +236,9 @@ AGREEMENT_LINES = {
 }
 
 
-def format_code_answer(answer: CodeAnswer) -> str:
+def format_code_answer(answer: CodeAnswer, snippets: bool = True) -> str:
+    """The Answer as Markdown. `snippets=False` lists the citations as `path:range` only (the GUI shows the snippets
+    in `format_citations`)."""
     lines = [f"[{UNVERIFIED_LABEL}]"]
     if answer.code_date:
         lines.append(f"(code per {answer.code_date})")
@@ -248,17 +251,37 @@ def format_code_answer(answer: CodeAnswer) -> str:
         lines += ["", AGREEMENT_LINES.get(answer.manual_agreement, AGREEMENT_LINES[UNKNOWN])]
         if answer.differing_manual_pages:
             lines.append("Afwijkende pagina's: " + ", ".join(answer.differing_manual_pages))
-    for citation in answer.citations:
-        lines += ["", f"{citation.path}:{citation.start_line}-{citation.end_line}", citation.snippet]
-        if citation.snippet_truncated:
-            lines.append("[...]")
+    if snippets:
+        for citation in answer.citations:
+            lines += ["", _reference(citation), *_snippet(citation)]
+    elif answer.citations:
+        lines += ["", "Bronnen in de code:"] + [f"- {_reference(citation)}" for citation in answer.citations]
     if answer.dropped_citations:
         lines += ["", f"[{len(answer.dropped_citations)} verwijzing(en) weggelaten: de regels bestaan niet in de code]"]
     if answer.status not in (ANSWERED, UNSTRUCTURED) and answer.tool_calls:
-        lines += ["", "Onderzocht:"] + [f"- {call.name} {_args(call)}" for call in answer.tool_calls]
+        lines += ["", "Onderzocht:"] + [f"- {call.describe()}" for call in answer.tool_calls]
     lines += ["", "Niet gecontroleerd: " + ", ".join(answer.not_checked)]
     return "\n".join(lines)
 
 
-def _args(call: ToolCallRecord) -> str:
-    return " ".join(str(value) for value in call.args.values())
+
+def format_citations(answer: CodeAnswer) -> str:
+    """The Code Citation viewer: each cited range in bold with its snippet as a code block."""
+    lines = [f"code per {answer.code_date}"] if answer.code_date else []
+    for citation in answer.citations:
+        lines += ["", f"**{_reference(citation)}**", *_snippet(citation)]
+    if not answer.citations:
+        lines += ["", "Geen bronverwijzingen."]
+    return "\n".join(lines).strip()
+
+
+def _reference(citation: CodeCitation) -> str:
+    return f"{citation.path}:{citation.start_line}-{citation.end_line}"
+
+
+def _snippet(citation: CodeCitation) -> list[str]:
+    """The snippet in a Markdown code block (a fence longer than any run of backticks inside it)."""
+    longest = max((len(run) for run in re.findall(r"`+", citation.snippet)), default=0)
+    fence = "`" * max(3, longest + 1)
+    lines = [fence, citation.snippet, fence]
+    return lines + ["[...]"] if citation.snippet_truncated else lines
